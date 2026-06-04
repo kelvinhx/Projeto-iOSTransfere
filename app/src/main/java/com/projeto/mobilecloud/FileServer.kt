@@ -7,74 +7,66 @@ import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.server.request.*
 import io.ktor.http.*
-import io.ktor.http.content.*
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import org.json.JSONArray
 import org.json.JSONObject
 
 class FileServer {
-    private val rootPath = File("/storage/emulated/0")
+    // Aponta para a raiz real do Android (Memória Interna)
+    private val baseDir = File("/storage/emulated/0")
 
     fun start() {
-        thread {
+        Thread {
             embeddedServer(Netty, port = 8080) {
                 routing {
                     get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
 
-                    // Listagem dinâmica de qualquer pasta
+                    // Listagem estilo Explorador Profundo
                     get("/api/list") {
                         val subPath = call.parameters["path"] ?: ""
-                        val targetDir = File(rootPath, subPath)
+                        val folder = if (subPath.isEmpty()) baseDir else File(baseDir, subPath)
                         
-                        if (!targetDir.exists()) {
-                            call.respond(HttpStatusCode.NotFound, "Caminho não encontrado")
+                        if (!folder.exists() || !folder.isDirectory) {
+                            call.respond(HttpStatusCode.NotFound, "Pasta não encontrada")
                             return@get
                         }
 
-                        val files = targetDir.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: listOf()
+                        val files = folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: listOf()
                         val json = JSONArray()
                         files.forEach {
                             val obj = JSONObject()
                             obj.put("name", it.name)
                             obj.put("isDir", it.isDirectory)
                             obj.put("size", if (it.isFile) "${it.length() / 1024} KB" else "--")
-                            obj.put("path", it.absolutePath.replace(rootPath.absolutePath, ""))
+                            // Caminho relativo para o iPhone usar
+                            obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
                             json.put(obj)
                         }
                         call.respondText(json.toString(), ContentType.Application.Json)
                     }
 
-                    // Operações de Arquivo (Copiar, Mover, Deletar, Renomear)
+                    // Ações: Deletar e Renomear
                     post("/api/action") {
                         val params = call.receiveParameters()
                         val action = params["action"]
-                        val source = File(rootPath, params["source"] ?: "")
-                        val dest = File(rootPath, params["dest"] ?: "")
-
-                        val result = when (action) {
-                            "delete" -> source.deleteRecursively()
-                            "rename" -> source.renameTo(dest)
-                            "copy" -> {
-                                try {
-                                    Files.copy(source.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                                    true
-                                } catch (e: Exception) { false }
-                            }
-                            "mkdir" -> dest.mkdirs()
+                        val target = File(baseDir, params["path"] ?: "")
+                        
+                        val success = when(action) {
+                            "delete" -> target.deleteRecursively()
+                            "rename" -> target.renameTo(File(target.parent, params["newName"] ?: "new_name"))
                             else -> false
                         }
-                        call.respond(if (result) HttpStatusCode.OK else HttpStatusCode.InternalServerError)
+                        call.respond(if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
                     }
 
+                    // Upload para a pasta atual aberta no iPhone
                     post("/upload") {
-                        val subPath = call.parameters["path"] ?: ""
-                        val targetDir = File(rootPath, subPath)
+                        val path = call.parameters["path"] ?: ""
+                        val uploadDir = File(baseDir, path)
                         val multipart = call.receiveMultipart()
                         multipart.forEachPart { part ->
-                            if (part is PartData.FileItem) {
-                                val file = File(targetDir, part.originalFileName ?: "upload")
+                            if (part is io.ktor.http.content.PartData.FileItem) {
+                                val file = File(uploadDir, part.originalFileName ?: "file")
                                 part.streamProvider().use { input -> file.outputStream().use { input.copyTo(it) } }
                             }
                             part.dispose()
@@ -83,8 +75,6 @@ class FileServer {
                     }
                 }
             }.start(wait = true)
-        }
+        }.start()
     }
 }
-
-private fun thread(block: () -> Unit) = Thread(block).start()
