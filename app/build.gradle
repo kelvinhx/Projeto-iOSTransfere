@@ -17,11 +17,20 @@ android {
 
     buildTypes {
         release {
-            // Corrigido: No Groovy não se usa 'is' antes do minify
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    // BLOCO OBRIGATÓRIO PARA CORRIGIR O ERRO DE DUPLICIDADE DO NETTY/KTOR
+    packagingOptions {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+            excludes += 'META-INF/INDEX.LIST'
+            excludes += 'META-INF/io.netty.versions.properties'
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
