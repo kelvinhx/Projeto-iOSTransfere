@@ -16,64 +16,61 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Layout Principal: Fundo Preto
+        // Layout Principal
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(Color.BLACK)
-            layoutParams = LinearLayout.LayoutParams(-1, -1)
         }
 
-        // Card Central: Cinza escuro com bordas
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(40, 40, 40, 40)
-            layoutParams = LinearLayout.LayoutParams(800, -2) // Largura fixa de 800px
+            setPadding(60, 60, 60, 60)
+            layoutParams = LinearLayout.LayoutParams(900, -2)
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#151517"))
-                cornerRadius = 30f
-                setStroke(2, Color.parseColor("#333333"))
+                setColor(Color.parseColor("#121214"))
+                cornerRadius = 40f
+                setStroke(3, Color.parseColor("#333333"))
             }
         }
 
         val title = TextView(this).apply {
             text = "NEXUS FILE EXPLORER"
             setTextColor(Color.WHITE)
-            textSize = 28f
+            textSize = 30f
             setTypeface(null, Typeface.BOLD)
-            setPadding(0, 0, 0, 30)
+            setPadding(0, 0, 0, 40)
         }
 
-        // Placeholder do QR Code com tamanho fixo
         val qrImage = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(400, 400)
-            setBackgroundColor(Color.DKGRAY)
-            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams(450, 450)
+            setBackgroundColor(Color.WHITE) // Fundo branco para o QR ser escaneável
+            setPadding(10, 10, 10, 10)
         }
 
         val ip = getLocalIpAddress()
         val url = "http://$ip:8080"
 
         val statusText = TextView(this).apply {
-            text = "Acesse no iPhone:\n$url"
+            text = "Escaneie para gerenciar arquivos\n$url"
             setTextColor(Color.parseColor("#007AFF"))
-            textSize = 18f
+            textSize = 20f
             gravity = Gravity.CENTER
-            setPadding(0, 20, 0, 20)
+            setPadding(0, 40, 0, 40)
         }
 
         val btnSetup = Button(this).apply {
-            text = "CONCEDER PERMISSÃO DE ARQUIVOS"
+            text = "CONCEDER ACESSO TOTAL"
             isFocusable = true
-            requestFocus() // Importante para o controle remoto
+            requestFocus()
             setTextColor(Color.WHITE)
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#1C1C1E"))
-                cornerRadius = 15f
-                setStroke(2, Color.GRAY)
+                cornerRadius = 20f
+                setStroke(2, Color.DKGRAY)
             }
-            setPadding(30, 20, 30, 20)
+            setPadding(40, 30, 40, 30)
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
@@ -88,14 +85,12 @@ class MainActivity : AppCompatActivity() {
         root.addView(card)
         setContentView(root)
 
-        // Carregar QR Code na Thread de Rede
+        // Thread para carregar o QR Code
         thread {
             try {
-                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=400x400&cht=qr&chl=$url").openStream())
+                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=450x450&cht=qr&chl=$url").openStream())
                 runOnUiThread { qrImage.setImageBitmap(bitmap) }
-            } catch (e: Exception) {
-                runOnUiThread { statusText.text = "Erro ao gerar QR Code.\nUse o IP: $url" }
-            }
+            } catch (e: Exception) {}
         }
 
         FileServer().start()
