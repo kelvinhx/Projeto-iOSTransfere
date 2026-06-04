@@ -4,80 +4,82 @@ object WebInterface {
     fun getHtml(): String {
         return """
         <!DOCTYPE html>
-        <html lang="pt-br">
+        <html>
         <head>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <title>Nexus Transfer</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+            <title>Nexus Pro</title>
             <style>
-                :root { --bg: #0a0a0c; --card: #1c1c1e; --accent: #0a84ff; --danger: #ff453a; }
-                body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: white; margin: 0; padding: 20px; }
-                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-                .btn-upload { background: var(--accent); color: white; padding: 12px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; display: inline-block; }
-                .file-card { background: var(--card); padding: 15px; border-radius: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; animation: fadeIn 0.3s ease; }
-                .file-info { display: flex; flex-direction: column; }
-                .file-name { font-weight: 500; font-size: 16px; word-break: break-all; }
-                .file-size { font-size: 12px; color: #8e8e93; }
-                .btn-delete { color: var(--danger); font-size: 14px; font-weight: 600; background: none; border: none; padding: 10px; cursor: pointer; }
-                #upload-status { font-size: 14px; color: var(--accent); margin-top: 10px; text-align: center; display: none; }
-                @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+                :root { --bg: #000; --card: #151515; --blue: #007AFF; }
+                body { font-family: sans-serif; background: var(--bg); color: #fff; margin: 0; padding: 15px; }
+                .item { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+                .btn { background: var(--blue); border: none; color: #fff; padding: 10px 20px; border-radius: 8px; font-weight: bold; }
+                .nav { margin-bottom: 20px; font-size: 14px; color: var(--blue); }
+                #progress { width: 100%; height: 4px; background: #333; display: none; margin: 10px 0; }
+                #bar { width: 0%; height: 100%; background: var(--blue); transition: 0.3s; }
             </style>
         </head>
         <body>
-            <div class="header">
-                <h2 style="margin:0">Nexus Link</h2>
-                <label for="fileInput" class="btn-upload">Enviar</label>
-                <input type="file" id="fileInput" multiple style="display:none" onchange="uploadFiles()">
-            </div>
+            <h3>📁 Gerenciador Nexus</h3>
+            <div id="path" class="nav">/Downloads</div>
             
-            <div id="upload-status">Processando...</div>
-            
-            <div id="fileList">
-                <!-- Arquivos aparecerão aqui -->
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
+                <label class="btn">📤 Enviar <input type="file" id="f" hidden onchange="u()"></label>
+                <button class="btn" style="background:#333" onclick="mkdir()">📁 +Pasta</button>
             </div>
+
+            <div id="progress"><div id="bar"></div></div>
+            <div id="list"></div>
 
             <script>
-                async function loadFiles() {
-                    const res = await fetch('/api/list');
-                    const files = await res.json();
-                    const container = document.getElementById('fileList');
-                    container.innerHTML = files.length === 0 ? '<p style="color:#8e8e93;text-align:center">Nenhum arquivo na TV</p>' : '';
+                let curPath = "";
+                async function load() {
+                    const r = await fetch('/api/list?path=' + curPath);
+                    const files = await r.json();
+                    let html = '';
                     files.forEach(f => {
-                        container.innerHTML += `
-                            <div class="file-card">
-                                <div class="file-info">
-                                    <span class="file-name">${"$"}{f.name}</span>
-                                    <span class="file-size">${"$"}{f.size}</span>
-                                </div>
-                                <button class="btn-delete" onclick="deleteFile('${"$"}{f.name}')">Apagar</button>
+                        html += `<div class="item">
+                            <div onclick="${"$"}{f.isDir ? "enter('"+f.name+"')" : ""}">
+                                ${"$"}{f.isDir ? '📂' : '📄'} ${"$"}{f.name} <br>
+                                <small style="color:#666">${"$"}{f.size}</small>
                             </div>
-                        `;
+                            <button style="background:none;border:none;color:red;" onclick="op('delete', '${"$"}{f.name}')">🗑️</button>
+                        </div>`;
                     });
+                    document.getElementById('list').innerHTML = html;
+                    document.getElementById('path').innerText = "Pasta: " + (curPath || "/Downloads");
                 }
 
-                async function uploadFiles() {
-                    const input = document.getElementById('fileInput');
-                    const status = document.getElementById('upload-status');
-                    status.style.display = 'block';
-                    const formData = new FormData();
-                    for(let f of input.files) formData.append('file', f);
+                function enter(name) { curPath += (curPath ? "/" : "") + name; load(); }
+                
+                async function op(action, name, newName="") {
+                    const p = new URLSearchParams();
+                    p.append('action', action); p.append('name', curPath + (curPath?"/":"") + name); p.append('newName', newName);
+                    await fetch('/api/op', {method:'POST', body:p});
+                    load();
+                }
+
+                function mkdir() { let n = prompt("Nome da pasta:"); if(n) op('mkdir', n); }
+
+                async function u() {
+                    const f = document.getElementById('f').files[0];
+                    const fd = new FormData();
+                    fd.append('file', f);
+                    document.getElementById('progress').style.display = 'block';
                     
-                    await fetch('/upload', { method: 'POST', body: formData });
-                    status.style.display = 'none';
-                    input.value = '';
-                    loadFiles();
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', '/upload?path=' + curPath);
+                    xhr.upload.onprogress = (e) => {
+                        document.getElementById('bar').style.width = (e.loaded/e.total*100) + '%';
+                    };
+                    xhr.onload = () => { 
+                        alert('✅ Sucesso!');
+                        document.getElementById('progress').style.display = 'none';
+                        load(); 
+                    };
+                    xhr.send(fd);
                 }
-
-                async function deleteFile(name) {
-                    if(!confirm('Deseja apagar ' + name + '?')) return;
-                    const params = new URLSearchParams();
-                    params.append('name', name);
-                    await fetch('/api/delete', { method: 'POST', body: params });
-                    loadFiles();
-                }
-
-                loadFiles(); // Carga inicial
-                setInterval(loadFiles, 5000); // Atualiza a cada 5 segundos
+                load();
             </script>
         </body>
         </html>
