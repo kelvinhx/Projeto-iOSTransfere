@@ -8,99 +8,95 @@ object WebInterface {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Nexus Cloud Explorer</title>
+            <title>Nexus Explorer Pro</title>
             <style>
-                :root { --blue: #007AFF; --green: #32D74B; --bg: #000; }
-                body { font-family: -apple-system, sans-serif; background: var(--bg); color: white; margin: 0; padding-bottom: 100px; }
-                .header { background: #121212; padding: 15px; position: sticky; top: 0; display: flex; gap: 10px; z-index: 100; border-bottom: 1px solid #333; }
+                body { font-family: sans-serif; background: #000; color: #fff; margin: 0; padding-bottom: 100px; }
+                .header { background: #121212; padding: 15px; position: sticky; top: 0; display: flex; gap: 10px; border-bottom: 1px solid #333; z-index: 100; }
                 .item { background: #1C1C1E; padding: 15px; border-radius: 12px; margin: 10px; display: flex; align-items: center; justify-content: space-between; }
-                .btn { background: var(--blue); border: none; color: white; padding: 10px 15px; border-radius: 8px; font-weight: bold; }
-                .actions { display: flex; gap: 15px; font-size: 18px; }
-                #clipboard-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--blue); padding: 20px; display: none; text-align: center; }
+                .btn { background: #007AFF; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; }
+                #clip-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #007AFF; padding: 20px; display: none; text-align: center; }
             </style>
         </head>
         <body>
             <div class="header">
                 <button class="btn" onclick="goBack()">⬅️</button>
-                <label class="btn" style="background:var(--green)">📤 Enviar <input type="file" id="up" hidden onchange="upload()"></label>
+                <label class="btn" style="background:#32D74B">📤 Enviar <input type="file" id="up" hidden onchange="upload()"></label>
                 <button class="btn" style="background:#444" onclick="mkdir()">📁 +Pasta</button>
             </div>
-            <div id="bc" style="padding:15px; color:var(--blue)">📍 /Raiz</div>
+            <div id="bc" style="padding:15px; color:#007AFF">📍 /Armazenamento</div>
             <div id="list"></div>
 
-            <div id="clipboard-bar">
-                <span id="clip-label"></span>
-                <button class="btn" style="background:white; color:black; margin-left:15px" onclick="paste()">📋 COLAR AQUI</button>
-                <button class="btn" style="background:red; margin-left:5px" onclick="clearClip()">X</button>
+            <div id="clip-bar">
+                <span id="clip-txt"></span>
+                <button class="btn" style="background:white; color:black; margin-left:10px" onclick="paste()">📋 COLAR AQUI</button>
             </div>
 
             <script>
-                let currentPath = "";
-                let clipboard = { action: '', source: '', name: '' };
+                let curPath = "";
+                let clip = { path: "", name: "" };
 
-                async function load(path = "") {
-                    currentPath = path;
-                    document.getElementById('bc').innerText = "📍 " + (path || "/Início");
-                    const r = await fetch('/api/list?path=' + encodeURIComponent(path));
+                async function load(p = "") {
+                    curPath = p;
+                    document.getElementById('bc').innerText = "📍 " + (p || "/Início");
+                    const r = await fetch('/api/list?path=' + encodeURIComponent(p));
                     const files = await r.json();
-                    let html = '';
+                    let h = '';
                     files.forEach(f => {
-                        html += `
-                        <div class="item">
+                        h += `<div class="item">
                             <div style="flex:1" onclick="${"$"}{f.isDir ? "load('"+f.relPath+"')" : ""}">
-                                ${"$"}{f.isDir ? '📂' : '📄'} ${"$"}{f.name}
+                                ${"$"}{f.isDir ? '📂' : '📄'} ${"$"}{f.name} <br>
+                                <small style="color:#666">${"$"}{f.size}</small>
                             </div>
-                            <div class="actions">
-                                <span onclick="rename('${"$"}{f.relPath}', '${"$"}{f.name}')">✏️</span>
-                                <span onclick="setClip('move', '${"$"}{f.relPath}', '${"$"}{f.name}')">✂️</span>
+                            <div style="display:flex; gap:15px">
+                                <span onclick="rename('${"$"}{f.relPath}','${"$"}{f.name}')">✏️</span>
+                                <span onclick="setClip('${"$"}{f.relPath}','${"$"}{f.name}')">✂️</span>
                                 <span onclick="del('${"$"}{f.relPath}')">🗑️</span>
                             </div>
                         </div>`;
                     });
-                    document.getElementById('list').innerHTML = html;
+                    document.getElementById('list').innerHTML = h;
                 }
 
-                function setClip(action, path, name) {
-                    clipboard = { action, source: path, name };
-                    document.getElementById('clipboard-bar').style.display = 'block';
-                    document.getElementById('clip-label').innerText = "Recortado: " + name;
+                function setClip(p, n) {
+                    clip = { path: p, name: n };
+                    document.getElementById('clip-txt').innerText = "Recortado: " + n;
+                    document.getElementById('clip-bar').style.display = "block";
                 }
 
                 async function paste() {
-                    const p = new URLSearchParams({ action: clipboard.action, path: clipboard.source, dest: currentPath + '/' + clipboard.name });
+                    const p = new URLSearchParams({ action: 'move', path: clip.path, dest: curPath + '/' + clip.name });
                     await fetch('/api/action', { method: 'POST', body: p });
-                    clearClip(); load(currentPath);
+                    document.getElementById('clip-bar').style.display = "none";
+                    load(curPath);
                 }
 
-                function clearClip() { document.getElementById('clipboard-bar').style.display = 'none'; }
-
-                async function rename(path, old) {
+                async function rename(p, old) {
                     const n = prompt("Novo nome:", old);
                     if(n) {
-                        const p = new URLSearchParams({ action: 'rename', path: path, dest: path.replace(old, n) });
-                        await fetch('/api/action', { method: 'POST', body: p });
-                        load(currentPath);
+                        const params = new URLSearchParams({ action: 'rename', path: p, dest: p.replace(old, n) });
+                        await fetch('/api/action', { method: 'POST', body: params });
+                        load(curPath);
                     }
                 }
 
                 async function del(p) { if(confirm('Apagar?')) { 
                     await fetch('/api/action', { method: 'POST', body: new URLSearchParams({action:'delete', path:p}) });
-                    load(currentPath); 
+                    load(curPath); 
                 } }
 
                 async function mkdir() {
                     const n = prompt("Nome da pasta:");
                     if(n) {
-                        await fetch('/api/action', { method: 'POST', body: new URLSearchParams({action:'mkdir', path:currentPath, name:n}) });
-                        load(currentPath);
+                        await fetch('/api/action', { method: 'POST', body: new URLSearchParams({action:'mkdir', path:curPath, name:n}) });
+                        load(curPath);
                     }
                 }
 
-                function goBack() { let p = currentPath.split('/').filter(x=>x); p.pop(); load(p.join('/')); }
+                function goBack() { let p = curPath.split('/').filter(x=>x); p.pop(); load(p.join('/')); }
                 async function upload() {
                     const fd = new FormData(); fd.append('file', document.getElementById('up').files[0]);
-                    await fetch('/upload?path='+encodeURIComponent(currentPath), {method:'POST', body:fd});
-                    load(currentPath);
+                    await fetch('/upload?path='+encodeURIComponent(curPath), {method:'POST', body:fd});
+                    load(curPath);
                 }
                 load();
             </script>
