@@ -17,84 +17,84 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Impedir que a tela durma na TV
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.parseColor("#050505"))
+        }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(40, 40, 40, 40)
+        }
+
         val ip = getLocalIpAddress()
         val url = "http://$ip:8080"
 
-        // Layout Dark Premium
-        val root = RelativeLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
-
-        // Card Central
+        // Card UI
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(60, 60, 60, 60)
+            setPadding(50, 50, 50, 50)
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#121212"))
-                cornerRadius = 30f
-                setStroke(2, Color.parseColor("#333333"))
+                setColor(Color.parseColor("#111111"))
+                cornerRadius = 40f
+                setStroke(3, Color.parseColor("#222222"))
             }
-            val params = RelativeLayout.LayoutParams(1000, ViewGroup.LayoutParams.WRAP_CONTENT)
-            params.addRule(RelativeLayout.CENTER_IN_PARENT)
-            layoutParams = params
-        }
-
-        val title = TextView(this).apply {
-            text = "NEXUS PRO 🚀"
-            setTextColor(Color.WHITE)
-            textSize = 35f
-            setTypeface(null, Typeface.BOLD)
         }
 
         val qrCode = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(400, 400).apply { setMargins(0, 40, 0, 40) }
-            // Gerar QR Code via API de Imagem para evitar bloatware de biblioteca
+            layoutParams = LinearLayout.LayoutParams(450, 450)
+            setPadding(20, 20, 20, 20)
+            setBackgroundColor(Color.WHITE) // Fundo branco para o QR ser legível
             thread {
                 try {
-                    val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=400x400&cht=qr&chl=$url").openStream())
+                    val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=450x450&cht=qr&chl=$url").openStream())
                     runOnUiThread { setImageBitmap(bitmap) }
                 } catch(e: Exception) {}
             }
         }
 
-        val instruction = TextView(this).apply {
-            text = "Escanear com o iPhone para Gerenciar\n$url"
-            setTextColor(Color.parseColor("#007AFF"))
+        val statusText = TextView(this).apply {
+            text = "NEXUS EXPLORER ATIVO\n$url"
+            setTextColor(Color.WHITE)
+            textSize = 22f
             gravity = Gravity.CENTER
-            textSize = 18f
+            setPadding(0, 30, 0, 30)
         }
 
-        val btnFile = Button(this).apply {
-            text = "⚙️ CONFIGURAR ACESSO TOTAL"
+        val btnSetup = Button(this).apply {
+            text = "CONCEDER ACESSO TOTAL AOS ARQUIVOS"
             isFocusable = true
             requestFocus()
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#007AFF"))
-                cornerRadius = 15f
-            }
             setTextColor(Color.WHITE)
-            setPadding(40, 20, 40, 20)
-            layoutParams = LinearLayout.LayoutParams(600, 100).apply { setMargins(0, 50, 0, 0) }
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#0A84FF"))
+                cornerRadius = 20f
+            }
+            setPadding(40, 25, 40, 25)
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivity(intent)
                 }
             }
         }
 
-        card.addView(title)
         card.addView(qrCode)
-        card.addView(instruction)
-        card.addView(btnFile)
+        card.addView(statusText)
+        card.addView(btnSetup)
         root.addView(card)
+        scroll.addView(root)
+        setContentView(scroll)
 
-        setContentView(root)
-
-        // Inicializa servidor
-        val storage = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (!storage.exists()) storage.mkdirs()
-        FileServer(storage).start()
+        // Inicia o servidor apenas se tivermos o IP
+        if (ip != "0.0.0.0") {
+            FileServer().start()
+        }
     }
 
     private fun getLocalIpAddress(): String {
@@ -102,10 +102,12 @@ class MainActivity : AppCompatActivity() {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             for (intf in interfaces) {
                 for (addr in intf.inetAddresses) {
-                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) return addr.hostAddress ?: ""
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        return addr.hostAddress ?: "0.0.0.0"
+                    }
                 }
             }
         } catch (e: Exception) {}
-        return "Conecte ao Wi-Fi"
+        return "0.0.0.0"
     }
 }
