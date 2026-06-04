@@ -12,53 +12,63 @@ import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 
-class FileServer(private val storagePath: File) {
+class FileServer(private var currentRoot: File) {
     fun start() {
         Thread {
             embeddedServer(Netty, port = 8080) {
                 routing {
-                    // Serve a Interface Web
-                    get("/") {
-                        call.respondText(WebInterface.getHtml(), ContentType.Text.Html)
-                    }
+                    get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
 
-                    // API: Listar arquivos na TV
+                    // Listar arquivos e pastas
                     get("/api/list") {
-                        val files = storagePath.listFiles()?.filter { it.isFile } ?: listOf<File>()
-                        val jsonArray = JSONArray()
+                        val path = call.parameters["path"] ?: ""
+                        val targetDir = File(currentRoot, path)
+                        val files = targetDir.listFiles()?.sortedBy { it.isFile } ?: listOf()
+                        
+                        val json = JSONArray()
                         files.forEach {
                             val obj = JSONObject()
                             obj.put("name", it.name)
-                            obj.put("size", "${it.length() / 1024} KB")
-                            jsonArray.put(obj)
+                            obj.put("isDir", it.isDirectory)
+                            obj.put("size", if(it.isFile) "${it.length()/1024}KB" else "--")
+                            json.put(obj)
                         }
-                        call.respondText(jsonArray.toString(), ContentType.Application.Json)
+                        call.respondText(json.toString(), ContentType.Application.Json)
                     }
 
-                    // API: Upload de Arquivos
+                    // Operações: Deletar, Mover, Renomear
+                    post("/api/op") {
+                        val post = call.receiveParameters()
+                        val action = post["action"]
+                        val name = post["name"]
+                        val newName = post["newName"]
+                        val file = File(currentRoot, name ?: "")
+
+                        val success = when(action) {
+                            "delete" -> file.deleteRecursively()
+                            "rename" -> file.renameTo(File(file.parent, newName ?: ""))
+                            "mkdir" -> File(currentRoot, name ?: "Nova Pasta").mkdirs()
+                            else -> false
+                        }
+                        call.respond(if(success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
+                    }
+
                     post("/upload") {
                         val multipart = call.receiveMultipart()
+                        val uploadPath = call.parameters["path"] ?: ""
+                        val targetDir = File(currentRoot, uploadPath)
+                        if(!targetDir.exists()) targetDir.mkdirs()
+
                         multipart.forEachPart { part ->
                             if (part is PartData.FileItem) {
-                                val file = File(storagePath, part.originalFileName ?: "file_${System.currentTimeMillis()}")
+                                val file = File(targetDir, part.originalFileName ?: "file")
                                 part.streamProvider().use { input ->
                                     file.outputStream().buffered().use { output -> input.copyTo(output) }
                                 }
                             }
                             part.dispose()
                         }
-                        call.respond(HttpStatusCode.OK, "Transferência Completa")
-                    }
-
-                    // API: Deletar Arquivo
-                    post("/api/delete") {
-                        val name = call.receiveParameters()["name"]
-                        val file = File(storagePath, name ?: "")
-                        if (file.exists() && file.delete()) {
-                            call.respond(HttpStatusCode.OK, "Deletado")
-                        } else {
-                            call.respond(HttpStatusCode.InternalServerError, "Erro ao deletar")
-                        }
+                        call.respond(HttpStatusCode.OK)
                     }
                 }
             }.start(wait = true)
