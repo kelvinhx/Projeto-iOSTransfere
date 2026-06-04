@@ -22,61 +22,45 @@ class FileServer {
                 embeddedServer(Netty, port = AppConfig.SERVER_PORT) {
                     routing {
                         get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
-                        
                         get("/logs") { call.respondText(Logger.getLogs(), ContentType.Text.Plain) }
 
-                        // Listagem de arquivos
                         get("/api/list") {
                             val path = call.parameters["path"] ?: ""
                             val folder = File(baseDir, path)
                             val json = JSONArray()
-                            if (folder.exists() && folder.isDirectory) {
-                                folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
-                                    val obj = JSONObject()
-                                    obj.put("name", it.name)
-                                    obj.put("isDir", it.isDirectory)
-                                    obj.put("size", FileUtils.formatSize(it.length()))
-                                    obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
-                                    json.put(obj)
-                                }
+                            folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
+                                val obj = JSONObject()
+                                obj.put("name", it.name)
+                                obj.put("isDir", it.isDirectory)
+                                obj.put("icon", FileUtils.getFileIcon(it))
+                                obj.put("size", FileUtils.formatSize(it.length()))
+                                obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
+                                json.put(obj)
                             }
                             call.respondText(json.toString(), ContentType.Application.Json)
                         }
 
-                        // Ações: Renomear, Mover, Deletar, Criar Pasta
                         post("/api/action") {
                             val p = call.receiveParameters()
                             val action = p["action"]
                             val source = File(baseDir, p["path"] ?: "")
                             val dest = File(baseDir, p["dest"] ?: "")
-
                             val success = when(action) {
                                 "delete" -> source.deleteRecursively()
-                                "rename", "move" -> {
-                                    if (!dest.parentFile.exists()) dest.parentFile.mkdirs()
-                                    source.renameTo(dest)
-                                }
-                                "mkdir" -> {
-                                    val newFolder = File(source, p["name"] ?: "Nova Pasta")
-                                    newFolder.mkdirs()
-                                }
+                                "rename", "move" -> source.renameTo(dest)
+                                "mkdir" -> File(source, p["name"] ?: "Nova Pasta").mkdirs()
                                 else -> false
                             }
-                            Logger.log("Ação: $action | Sucesso: $success | Alvo: ${source.name}")
                             call.respond(if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
                         }
 
-                        // Upload de arquivos
                         post("/upload") {
                             val path = call.parameters["path"] ?: ""
                             val uploadDir = File(baseDir, path)
-                            if (!uploadDir.exists()) uploadDir.mkdirs()
-                            
                             call.receiveMultipart().forEachPart { part ->
                                 if (part is PartData.FileItem) {
                                     val f = File(uploadDir, part.originalFileName ?: "file")
                                     part.streamProvider().use { input -> f.outputStream().use { input.copyTo(it) } }
-                                    Logger.log("Upload: ${f.name} em ${uploadDir.name}")
                                 }
                                 part.dispose()
                             }
@@ -84,9 +68,7 @@ class FileServer {
                         }
                     }
                 }.start(wait = true)
-            } catch (e: Exception) {
-                Logger.log("Erro no Servidor: ${e.message}")
-            }
+            } catch (e: Exception) { Logger.log("Erro Servidor: ${e.message}") }
         }
     }
 }
