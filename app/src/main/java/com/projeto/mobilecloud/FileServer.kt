@@ -1,8 +1,92 @@
-// Dentro de routing { ... } post("/api/action") { ... }
-val success = when(action) {
-    "delete" -> source.deleteRecursively()
-    "rename" -> source.renameTo(dest)
-    "move" -> source.renameTo(dest) // No Java/Android move é um rename para outro path
-    "mkdir" -> File(source, p["name"] ?: "Nova Pasta").mkdirs()
-    else -> false
+package com.projeto.mobilecloud
+
+import io.ktor.server.engine.*
+import io.ktor.server.netty.*
+import io.ktor.server.routing.*
+import io.ktor.server.application.*
+import io.ktor.server.response.*
+import io.ktor.server.request.*
+import io.ktor.http.*
+import io.ktor.http.content.*
+import java.io.File
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.concurrent.thread
+
+class FileServer {
+    private val baseDir = File(AppConfig.ROOT_PATH)
+
+    fun start() {
+        thread {
+            try {
+                embeddedServer(Netty, port = AppConfig.SERVER_PORT) {
+                    routing {
+                        get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
+                        
+                        get("/logs") { call.respondText(Logger.getLogs(), ContentType.Text.Plain) }
+
+                        // Listagem de arquivos
+                        get("/api/list") {
+                            val path = call.parameters["path"] ?: ""
+                            val folder = File(baseDir, path)
+                            val json = JSONArray()
+                            if (folder.exists() && folder.isDirectory) {
+                                folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
+                                    val obj = JSONObject()
+                                    obj.put("name", it.name)
+                                    obj.put("isDir", it.isDirectory)
+                                    obj.put("size", FileUtils.formatSize(it.length()))
+                                    obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
+                                    json.put(obj)
+                                }
+                            }
+                            call.respondText(json.toString(), ContentType.Application.Json)
+                        }
+
+                        // Ações: Renomear, Mover, Deletar, Criar Pasta
+                        post("/api/action") {
+                            val p = call.receiveParameters()
+                            val action = p["action"]
+                            val source = File(baseDir, p["path"] ?: "")
+                            val dest = File(baseDir, p["dest"] ?: "")
+
+                            val success = when(action) {
+                                "delete" -> source.deleteRecursively()
+                                "rename", "move" -> {
+                                    if (!dest.parentFile.exists()) dest.parentFile.mkdirs()
+                                    source.renameTo(dest)
+                                }
+                                "mkdir" -> {
+                                    val newFolder = File(source, p["name"] ?: "Nova Pasta")
+                                    newFolder.mkdirs()
+                                }
+                                else -> false
+                            }
+                            Logger.log("Ação: $action | Sucesso: $success | Alvo: ${source.name}")
+                            call.respond(if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
+                        }
+
+                        // Upload de arquivos
+                        post("/upload") {
+                            val path = call.parameters["path"] ?: ""
+                            val uploadDir = File(baseDir, path)
+                            if (!uploadDir.exists()) uploadDir.mkdirs()
+                            
+                            call.receiveMultipart().forEachPart { part ->
+                                if (part is PartData.FileItem) {
+                                    val f = File(uploadDir, part.originalFileName ?: "file")
+                                    part.streamProvider().use { input -> f.outputStream().use { input.copyTo(it) } }
+                                    Logger.log("Upload: ${f.name} em ${uploadDir.name}")
+                                }
+                                part.dispose()
+                            }
+                            call.respond(HttpStatusCode.OK)
+                        }
+                    }
+                }.start(wait = true)
+            } catch (e: Exception) {
+                Logger.log("Erro no Servidor: ${e.message}")
+            }
+        }
+    }
 }
