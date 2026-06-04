@@ -2,7 +2,7 @@ package com.projeto.mobilecloud
 
 import android.content.Intent
 import android.graphics.*
-import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.*
 import android.net.Uri
 import android.os.*
 import android.view.*
@@ -20,51 +20,49 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        Logger.log("App Iniciado")
-
+        
+        // Gatilho Automático de Permissão
+        checkPermissionsAndStart()
+        
         setupUI()
-        
-        // Inicia Serviços de Fundo
         FileServer().start()
-        NetworkDiscovery(this).registerService(AppConfig.SERVER_PORT)
-        
-        loadQRCode()
         refreshList()
     }
 
-    private fun setupUI() {
-        val root = RelativeLayout(this).apply { setBackgroundColor(Color.parseColor(AppConfig.THEME_BG)) }
+    private fun checkPermissionsAndStart() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                requestPerm()
+            }
+        }
+    }
 
-        // Sidebar de Conexão
+    private fun setupUI() {
+        val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
+
+        // Sidebar Fixa
         val sidebar = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(30, 30, 30, 30)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#111113")) }
-            val params = RelativeLayout.LayoutParams(450, -1)
-            layoutParams = params
+            setPadding(40, 40, 40, 40)
+            background = ColorDrawable(Color.parseColor("#121212"))
+            layoutParams = RelativeLayout.LayoutParams(400, -1)
         }
 
-        val qrImage = ImageView(this).apply { 
-            layoutParams = LinearLayout.LayoutParams(350, 350)
+        val qrImage = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(300, 300)
             setBackgroundColor(Color.WHITE)
-            setPadding(10, 10, 10, 10)
+            scaleType = ImageView.ScaleType.FIT_CENTER
         }
 
+        val url = "http://${getLocalIpAddress()}:${AppConfig.SERVER_PORT}"
         val info = TextView(this).apply {
-            text = "IP: ${getLocalIpAddress()}\nPorta: ${AppConfig.SERVER_PORT}"
-            setTextColor(Color.CYAN); textSize = 16f; setPadding(0, 20, 0, 20); gravity = Gravity.CENTER
+            text = "NEXUS PRO\n$url"
+            setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER; setPadding(0,20,0,20)
         }
 
-        val btnPerm = Button(this).apply {
-            text = "LIBERAR ACESSO"
-            isFocusable = true
-            setOnClickListener { requestPerm() }
-            background = GradientDrawable().apply { setColor(Color.parseColor(AppConfig.THEME_ACCENT)); cornerRadius = 10f }
-        }
-
-        sidebar.addView(qrImage); sidebar.addView(info); sidebar.addView(btnPerm)
+        sidebar.addView(qrImage); sidebar.addView(info)
 
         // Explorer
         val scroll = ScrollView(this).apply {
@@ -72,54 +70,87 @@ class MainActivity : AppCompatActivity() {
             params.addRule(RelativeLayout.RIGHT_OF, sidebar.id)
             layoutParams = params
         }
-        container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(20, 20, 20, 20) }
+        container = LinearLayout(this).apply { 
+            orientation = LinearLayout.VERTICAL
+            setPadding(30, 30, 30, 30) 
+        }
         scroll.addView(container)
 
         root.addView(sidebar); root.addView(scroll)
         setContentView(root)
-        
-        // Atribui a imagem do QR ao sidebar futuramente
-        this.findViewById<ImageView>(qrImage.id)?.let { /* placeholder */ }
-        
+
+        // QR Code Loader
         thread {
             try {
-                val url = "http://${getLocalIpAddress()}:${AppConfig.SERVER_PORT}"
-                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=350x350&cht=qr&chl=$url").openStream())
+                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=$url").openStream())
                 runOnUiThread { qrImage.setImageBitmap(bitmap) }
-            } catch (e: Exception) { Logger.log("Erro QR: ${e.message}") }
+            } catch (e: Exception) { 
+                Logger.log("Erro QR: Tente abrir $url manualmente")
+            }
         }
     }
 
     private fun refreshList() {
         container.removeAllViews()
-        val files = currentPath.listFiles()?.sortedBy { !it.isDirectory } ?: listOf()
+        val files = currentPath.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: listOf()
         
         if (currentPath.absolutePath != AppConfig.ROOT_PATH) {
-            container.addView(createFileButton(".. [VOLTAR]") {
+            container.addView(createFileButton("⬅️ .. [VOLTAR PARA ANTERIOR]") {
                 currentPath = currentPath.parentFile ?: currentPath
                 refreshList()
             })
         }
 
         files.forEach { file ->
-            val label = (if (file.isDirectory) "📂 " else "📄 ") + file.name + " (" + FileUtils.formatSize(file.length()) + ")"
-            container.addView(createFileButton(label) {
-                if (file.isDirectory) { currentPath = file; refreshList() }
+            val icon = if (file.isDirectory) "📂" else "📄"
+            container.addView(createFileButton("$icon ${file.name.uppercase()}") {
+                if (file.isDirectory) {
+                    currentPath = file
+                    refreshList()
+                }
             })
         }
     }
 
     private fun createFileButton(txt: String, onClick: () -> Unit): Button {
         return Button(this).apply {
-            text = txt; isFocusable = true; setTextColor(Color.WHITE); textAlignment = View.TEXT_ALIGNMENT_VIEW_START
-            background = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 8f }
+            text = txt
+            isFocusable = true
+            setTextColor(Color.LTGRAY)
+            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+            setPadding(40, 30, 40, 30)
+            textSize = 16f
+            
+            // EFEITO DE FOCO (D-PAD)
+            val normal = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 12f }
+            val focused = GradientDrawable().apply { 
+                setColor(Color.parseColor(AppConfig.THEME_ACCENT)) 
+                cornerRadius = 12f
+                setStroke(4, Color.WHITE)
+            }
+            
+            val states = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), focused)
+                addState(intArrayOf(), normal)
+            }
+            
+            background = states
+            
+            setOnFocusChangeListener { _, hasFocus ->
+                setTextColor(if (hasFocus) Color.WHITE else Color.LTGRAY)
+                scaleX = if (hasFocus) 1.02f else 1.0f
+                scaleY = if (hasFocus) 1.02f else 1.0f
+            }
+
             setOnClickListener { onClick() }
-            val p = LinearLayout.LayoutParams(-1, -2); p.setMargins(0,4,0,4); layoutParams = p
+            
+            val p = LinearLayout.LayoutParams(-1, -2)
+            p.setMargins(0, 8, 0, 8)
+            layoutParams = p
         }
     }
 
     private fun requestPerm() {
-        Logger.log("Solicitando Permissão")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
@@ -140,6 +171,4 @@ class MainActivity : AppCompatActivity() {
         }
         return "0.0.0.0"
     }
-    
-    private fun loadQRCode() { /* Gerenciado na thread de UI acima */ }
 }
