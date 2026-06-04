@@ -1,106 +1,111 @@
 package com.projeto.mobilecloud
 
 import android.content.Intent
-import android.graphics.Color
+import android.graphics.*
+import android.graphics.drawable.GradientDrawable
 import android.os.*
-import android.view.Gravity
+import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.net.URL
+import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
-    private var server: FileServer? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#050505"))
-            setPadding(80, 80, 80, 80)
-        }
-
+        
         val ip = getLocalIpAddress()
         val url = "http://$ip:8080"
 
-        val title = TextView(this).apply {
-            text = "NEXUS TRANSFER"
-            setTextColor(Color.WHITE)
-            textSize = 40f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        // Layout Dark Premium
+        val root = RelativeLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
         }
 
-        val subtitle = TextView(this).apply {
-            text = "AGUARDANDO CONEXÃO DO IPHONE"
-            setTextColor(Color.parseColor("#00E5FF"))
-            textSize = 18f
-            setPadding(0, 10, 0, 50)
-        }
-
-        val linkCard = LinearLayout(this).apply {
+        // Card Central
+        val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#121212"))
-            setPadding(40, 40, 40, 40)
             gravity = Gravity.CENTER
+            setPadding(60, 60, 60, 60)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#121212"))
+                cornerRadius = 30f
+                setStroke(2, Color.parseColor("#333333"))
+            }
+            val params = RelativeLayout.LayoutParams(1000, ViewGroup.LayoutParams.WRAP_CONTENT)
+            params.addRule(RelativeLayout.CENTER_IN_PARENT)
+            layoutParams = params
         }
 
-        val urlText = TextView(this).apply {
-            text = url
-            setTextColor(Color.YELLOW)
-            textSize = 28f
-        }
-        
-        linkCard.addView(urlText)
-
-        val btnPerm = Button(this).apply {
-            text = "CONFIGURAR ARMAZENAMENTO"
-            isFocusable = true
-            requestFocus() // Foco inicial para o D-Pad
-            setBackgroundColor(Color.parseColor("#1C1C1E"))
+        val title = TextView(this).apply {
+            text = "NEXUS PRO 🚀"
             setTextColor(Color.WHITE)
-            setPadding(30, 20, 30, 20)
+            textSize = 35f
+            setTypeface(null, Typeface.BOLD)
+        }
+
+        val qrCode = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(400, 400).apply { setMargins(0, 40, 0, 40) }
+            // Gerar QR Code via API de Imagem para evitar bloatware de biblioteca
+            thread {
+                try {
+                    val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=400x400&cht=qr&chl=$url").openStream())
+                    runOnUiThread { setImageBitmap(bitmap) }
+                } catch(e: Exception) {}
+            }
+        }
+
+        val instruction = TextView(this).apply {
+            text = "Escanear com o iPhone para Gerenciar\n$url"
+            setTextColor(Color.parseColor("#007AFF"))
+            gravity = Gravity.CENTER
+            textSize = 18f
+        }
+
+        val btnFile = Button(this).apply {
+            text = "⚙️ CONFIGURAR ACESSO TOTAL"
+            isFocusable = true
+            requestFocus()
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#007AFF"))
+                cornerRadius = 15f
+            }
+            setTextColor(Color.WHITE)
+            setPadding(40, 20, 40, 20)
+            layoutParams = LinearLayout.LayoutParams(600, 100).apply { setMargins(0, 50, 0, 0) }
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    startActivity(intent)
+                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
                 }
             }
         }
 
-        root.addView(title)
-        root.addView(subtitle)
-        root.addView(linkCard)
-        root.addView(Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, 40) })
-        root.addView(btnPerm)
+        card.addView(title)
+        card.addView(qrCode)
+        card.addView(instruction)
+        card.addView(btnFile)
+        root.addView(card)
 
         setContentView(root)
 
-        // Inicia o servidor na pasta de Downloads
+        // Inicializa servidor
         val storage = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         if (!storage.exists()) storage.mkdirs()
-        
-        server = FileServer(storage)
-        server?.start()
+        FileServer(storage).start()
     }
 
     private fun getLocalIpAddress(): String {
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             for (intf in interfaces) {
-                val addrs = intf.inetAddresses
-                for (addr in addrs) {
-                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
-                        return addr.hostAddress ?: "0.0.0.0"
-                    }
+                for (addr in intf.inetAddresses) {
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) return addr.hostAddress ?: ""
                 }
             }
         } catch (e: Exception) {}
-        return "Sem Wi-Fi"
+        return "Conecte ao Wi-Fi"
     }
 }
-
-// Helper para espaçamento
-class Space(context: android.content.Context) : android.view.View(context)
