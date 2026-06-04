@@ -4,96 +4,82 @@ object WebInterface {
     fun getHtml(): String {
         return """
         <!DOCTYPE html>
-        <html>
+        <html lang="pt-br">
         <head>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-            <title>Nexus Explorer</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <title>Nexus File Manager</title>
             <style>
-                :root { --bg: #090909; --card: #161618; --blue: #0A84FF; --accent: #30D158; }
+                :root { --blue: #007AFF; --bg: #000; --card: #1C1C1E; }
                 body { font-family: -apple-system, sans-serif; background: var(--bg); color: white; margin: 0; }
-                .toolbar { sticky: top; background: rgba(22,22,24,0.8); backdrop-filter: blur(10px); padding: 15px; display: flex; gap: 10px; align-items: center; }
-                .breadcrumb { padding: 10px 15px; font-size: 14px; color: var(--blue); background: var(--card); overflow-x: auto; white-space: nowrap; }
-                .file-list { padding: 10px; }
-                .item { background: var(--card); margin-bottom: 8px; border-radius: 12px; padding: 15px; display: flex; align-items: center; justify-content: space-between; }
-                .info { display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer; }
+                .toolbar { background: #121212; padding: 15px; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #333; display: flex; gap: 10px; }
+                .breadcrumb { padding: 10px 15px; background: #1C1C1E; color: var(--blue); font-size: 14px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; }
+                .list { padding: 10px; }
+                .item { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+                .item-info { display: flex; align-items: center; gap: 15px; flex: 1; }
                 .icon { font-size: 24px; }
-                .actions { display: flex; gap: 15px; }
-                .btn { background: var(--blue); border: none; color: white; padding: 10px 18px; border-radius: 10px; font-weight: bold; }
-                #loader { width: 0%; height: 3px; background: var(--accent); position: fixed; top: 0; transition: 0.3s; }
+                .name { font-size: 16px; font-weight: 500; }
+                .btn { background: var(--blue); border: none; color: white; padding: 10px 15px; border-radius: 8px; font-weight: bold; }
+                .btn-danger { background: #FF453A; font-size: 12px; padding: 5px 10px; }
+                #progress { width: 0%; height: 3px; background: var(--blue); position: fixed; top: 0; left: 0; transition: 0.3s; }
             </style>
         </head>
         <body>
-            <div id="loader"></div>
+            <div id="progress"></div>
             <div class="toolbar">
                 <button class="btn" onclick="goBack()">⬅️ Voltar</button>
-                <label class="btn" style="background:var(--accent)">📤 Enviar <input type="file" id="up" hidden onchange="upload()"></label>
-                <button class="btn" style="background:#444" onclick="mkdir()">➕ Pasta</button>
+                <label class="btn">📤 Enviar <input type="file" id="up" hidden onchange="upload()"></label>
             </div>
             <div id="bc" class="breadcrumb">Armazenamento Interno</div>
-            <div id="list" class="file-list"></div>
+            <div id="list" class="list"></div>
 
             <script>
                 let currentPath = "";
 
-                async function load(path = currentPath) {
+                async function load(path = "") {
                     currentPath = path;
-                    document.getElementById('bc').innerText = "📍 /" + currentPath;
-                    const res = await fetch('/api/list?path=' + encodeURIComponent(currentPath));
-                    const files = await res.json();
+                    document.getElementById('bc').innerText = "📍 " + (path || "/Início");
+                    const r = await fetch('/api/list?path=' + encodeURIComponent(path));
+                    const files = await r.json();
                     let html = '';
                     files.forEach(f => {
                         html += `
                         <div class="item">
-                            <div class="info" onclick="${"$"}{f.isDir ? "load('"+f.path+"')" : "fileAction('"+f.name+"')" }">
+                            <div class="item-info" onclick="${"$"}{f.isDir ? "load('"+f.relPath+"')" : ""}">
                                 <span class="icon">${"$"}{f.isDir ? '📂' : '📄'}</span>
-                                <div><b>${"$"}{f.name}</b><br><small style="color:#888">${"$"}{f.size}</small></div>
+                                <div>
+                                    <div class="name">${"$"}{f.name}</div>
+                                    <small style="color:#888">${"$"}{f.size}</small>
+                                </div>
                             </div>
-                            <div class="actions">
-                                <span onclick="rename('${"$"}{f.name}')">✏️</span>
-                                <span onclick="del('${"$"}{f.name}')">🗑️</span>
-                            </div>
+                            <button class="btn btn-danger" onclick="deleteFile('${"$"}{f.relPath}')">🗑️</button>
                         </div>`;
                     });
-                    document.getElementById('list').innerHTML = html;
+                    document.getElementById('list').innerHTML = html || '<p style="text-align:center;color:#666">Pasta Vazia</p>';
                 }
 
                 function goBack() {
-                    if(!currentPath) return;
-                    let parts = currentPath.split('/');
+                    if (!currentPath) return;
+                    let parts = currentPath.split('/').filter(p => p);
                     parts.pop();
                     load(parts.join('/'));
                 }
 
                 async function upload() {
-                    const file = document.getElementById('up').files[0];
-                    const fd = new FormData();
-                    fd.append('file', file);
+                    const f = document.getElementById('up').files[0];
+                    const fd = new FormData(); fd.append('file', f);
                     const xhr = new XMLHttpRequest();
                     xhr.open('POST', '/upload?path=' + encodeURIComponent(currentPath));
-                    xhr.upload.onprogress = e => document.getElementById('loader').style.width = (e.loaded/e.total*100) + '%';
-                    xhr.onload = () => { document.getElementById('loader').style.width = '0%'; load(); };
+                    xhr.upload.onprogress = e => document.getElementById('progress').style.width = (e.loaded/e.total*100) + '%';
+                    xhr.onload = () => { document.getElementById('progress').style.width = '0'; load(currentPath); };
                     xhr.send(fd);
                 }
 
-                async function del(name) {
-                    if(confirm('Apagar ' + name + '?')) {
-                        await fetch('/api/action', {
-                            method: 'POST',
-                            body: new URLSearchParams({action: 'delete', source: currentPath + '/' + name})
-                        });
-                        load();
-                    }
-                }
-
-                async function mkdir() {
-                    const n = prompt("Nome da pasta:");
-                    if(n) {
-                        await fetch('/api/action', {
-                            method: 'POST',
-                            body: new URLSearchParams({action: 'mkdir', dest: currentPath + '/' + n})
-                        });
-                        load();
+                async function deleteFile(path) {
+                    if (confirm('Apagar arquivo?')) {
+                        const p = new URLSearchParams(); p.append('action', 'delete'); p.append('path', path);
+                        await fetch('/api/action', { method: 'POST', body: p });
+                        load(currentPath);
                     }
                 }
 
