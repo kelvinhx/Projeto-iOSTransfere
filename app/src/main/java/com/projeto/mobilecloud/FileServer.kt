@@ -13,13 +13,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.concurrent.thread
 
-object TransferState {
-    var isUploading: Boolean = false
-    var fileName: String = ""
-    var progress: Int = 0
-    var lastStatus: String = "Aguardando"
-}
-
 class FileServer {
     private val baseDir = File("/storage/emulated/0")
 
@@ -29,64 +22,47 @@ class FileServer {
                 routing {
                     get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
 
-                    // API de Status para a TV e Web consultarem
-                    get("/api/status") {
-                        val json = JSONObject()
-                        json.put("isUploading", TransferState.isUploading)
-                        json.put("fileName", TransferState.fileName)
-                        json.put("progress", TransferState.progress)
-                        json.put("status", TransferState.lastStatus)
-                        call.respondText(json.toString(), ContentType.Application.Json)
-                    }
-
                     get("/api/list") {
                         val path = call.parameters["path"] ?: ""
                         val folder = File(baseDir, path)
                         val json = JSONArray()
-                        if (folder.exists() && folder.isDirectory) {
-                            folder.listFiles()?.sortedBy { !it.isDirectory }?.forEach {
-                                val obj = JSONObject()
-                                obj.put("name", it.name)
-                                obj.put("isDir", it.isDirectory)
-                                obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
-                                json.put(obj)
-                            }
+                        folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
+                            val obj = JSONObject()
+                            obj.put("name", it.name)
+                            obj.put("isDir", it.isDirectory)
+                            obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
+                            json.put(obj)
                         }
                         call.respondText(json.toString(), ContentType.Application.Json)
                     }
 
+                    post("/api/action") {
+                        val p = call.receiveParameters()
+                        val action = p["action"]
+                        val source = File(baseDir, p["path"] ?: "")
+                        val dest = File(baseDir, p["dest"] ?: "")
+
+                        val success = when(action) {
+                            "delete" -> source.deleteRecursively()
+                            "rename" -> source.renameTo(dest)
+                            "move" -> source.renameTo(File(dest, source.name))
+                            "copy" -> try { source.copyRecursively(File(dest, source.name), true); true } catch(e: Exception) { false }
+                            "mkdir" -> File(source, p["name"] ?: "Nova Pasta").mkdirs()
+                            else -> false
+                        }
+                        call.respond(if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
+                    }
+
                     post("/upload") {
                         val path = call.parameters["path"] ?: ""
-                        val dest = File(baseDir, path)
-                        if (!dest.exists()) dest.mkdirs()
-
-                        val multipart = call.receiveMultipart()
-                        TransferState.isUploading = true
-                        
-                        multipart.forEachPart { part ->
+                        val uploadDir = File(baseDir, path)
+                        call.receiveMultipart().forEachPart { part ->
                             if (part is PartData.FileItem) {
-                                TransferState.fileName = part.originalFileName ?: "Arquivo"
-                                val f = File(dest, TransferState.fileName)
-                                val contentLength = call.request.header(HttpHeaders.ContentLength)?.toLong() ?: 1L
-                                
-                                part.streamProvider().use { input ->
-                                    f.outputStream().use { output ->
-                                        val buffer = ByteArray(8192)
-                                        var bytesRead: Long = 0
-                                        while (true) {
-                                            val read = input.read(buffer)
-                                            if (read <= 0) break
-                                            output.write(buffer, 0, read)
-                                            bytesRead += read
-                                            TransferState.progress = ((bytesRead * 100) / contentLength).toInt()
-                                        }
-                                    }
-                                }
+                                val f = File(uploadDir, part.originalFileName ?: "file")
+                                part.streamProvider().use { input -> f.outputStream().use { input.copyTo(it) } }
                             }
                             part.dispose()
                         }
-                        TransferState.isUploading = false
-                        TransferState.lastStatus = "Sucesso!"
                         call.respond(HttpStatusCode.OK)
                     }
                 }
