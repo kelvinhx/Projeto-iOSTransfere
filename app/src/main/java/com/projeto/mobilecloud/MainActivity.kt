@@ -3,150 +3,104 @@ package com.projeto.mobilecloud
 import android.content.Intent
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.*
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import java.io.File
 import java.net.URL
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var fileListContainer: LinearLayout
-    private var currentPath = File("/storage/emulated/0")
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        if (!checkStoragePermission()) {
-            showPermissionScreen()
-        } else {
-            showMainUI()
-        }
-    }
-
-    private fun checkStoragePermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else true
-    }
-
-    private fun showPermissionScreen() {
+        // Layout Principal
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Color.parseColor("#08080A"))
         }
-        val txt = TextView(this).apply {
-            text = "ACESSO AOS ARQUIVOS NECESSÁRIO\nNexus Explorer precisa de permissão total."
-            setTextColor(Color.WHITE)
+
+        // Card Centralizado
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            textSize = 20f
-            setPadding(0, 0, 0, 40)
-        }
-        val btn = Button(this).apply {
-            text = "CONCEDER AGORA"
-            isFocusable = true
-            requestFocus()
-            setOnClickListener {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                }
+            setPadding(60, 60, 60, 60)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#121214"))
+                cornerRadius = 30f
+                setStroke(2, Color.DKGRAY)
             }
+            layoutParams = LinearLayout.LayoutParams(900, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        root.addView(txt); root.addView(btn)
-        setContentView(root)
-    }
 
-    private fun showMainUI() {
-        val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
-
-        // Header
-        val header = LinearLayout(this).apply {
-            id = View.generateViewId()
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(40, 20, 40, 20)
-            setBackgroundColor(Color.parseColor("#121212"))
-        }
-        
-        val title = TextView(this).apply {
-            text = "NEXUS PRO"
-            setTextColor(Color.WHITE)
-            textSize = 24f
-            setTypeface(null, Typeface.BOLD)
-        }
-        
         val qrImage = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(150, 150).apply { leftMargin = 40 }
+            layoutParams = LinearLayout.LayoutParams(400, 400)
             setBackgroundColor(Color.WHITE)
         }
 
-        header.addView(title); header.addView(qrImage)
-
-        // File Explorer List
-        val scroll = ScrollView(this).apply {
-            val params = RelativeLayout.LayoutParams(-1, -1)
-            params.addRule(RelativeLayout.BELOW, header.id)
-            layoutParams = params
-        }
-        
-        fileListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 20, 40, 20) }
-        scroll.addView(fileListContainer)
-
-        root.addView(header); root.addView(scroll)
-        setContentView(root)
-
-        // Load Files and Start Server
         val ip = getLocalIpAddress()
         val url = "http://$ip:8080"
-        
+
+        val infoText = TextView(this).apply {
+            text = "NEXUS PRO EXPLORER\n$url"
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setPadding(0, 30, 0, 30)
+        }
+
+        val btnAction = Button(this).apply {
+            text = "LIBERAR ACESSO AOS ARQUIVOS"
+            isFocusable = true
+            requestFocus()
+            setTextColor(Color.WHITE)
+            setPadding(40, 20, 40, 20)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#007AFF"))
+                cornerRadius = 15f
+            }
+            setOnClickListener { requestSmartPermission() }
+        }
+
+        card.addView(qrImage); card.addView(infoText); card.addView(btnAction)
+        root.addView(card)
+        setContentView(root)
+
+        // Inicia Servidor e QR Code
+        FileServer().start()
         thread {
             try {
-                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=150x150&cht=qr&chl=$url").openStream())
+                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=400x400&cht=qr&chl=$url").openStream())
                 runOnUiThread { qrImage.setImageBitmap(bitmap) }
             } catch (e: Exception) {}
         }
-
-        FileServer().start()
-        refreshFileList()
     }
 
-    private fun refreshFileList() {
-        fileListContainer.removeAllViews()
-        
-        // Botão Voltar
-        if (currentPath.absolutePath != "/storage/emulated/0") {
-            fileListContainer.addView(createFileItem(".. [Voltar]", true) {
-                currentPath = currentPath.parentFile ?: currentPath
-                refreshFileList()
-            })
-        }
-
-        val files = currentPath.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: listOf()
-        files.forEach { file ->
-            fileListContainer.addView(createFileItem(file.name, file.isDirectory) {
-                if (file.isDirectory) {
-                    currentPath = file
-                    refreshFileList()
+    private fun requestSmartPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                // Tenta abrir direto na permissão do App
+                val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                intent.data = Uri.parse("package:$packageName")
+                startActivity(intent)
+            } catch (e: Exception) {
+                try {
+                    // Se falhar, abre a lista geral de todos os arquivos
+                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivity(intent)
+                } catch (e2: Exception) {
+                    // Se tudo falhar, abre as configurações gerais
+                    startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+                    Toast.makeText(this, "Vá em Apps > Nexus > Permissões", Toast.LENGTH_LONG).show()
                 }
-            })
-        }
-    }
-
-    private fun createFileItem(name: String, isDir: Boolean, onClick: () -> Unit): Button {
-        return Button(this).apply {
-            text = (if (isDir) "📂 " else "📄 ") + name
-            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
-            isFocusable = true
-            setTextColor(Color.WHITE)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 10f }
-            val params = LinearLayout.LayoutParams(-1, -2)
-            params.setMargins(0, 5, 0, 5)
-            layoutParams = params
-            setOnClickListener { onClick() }
+            }
+        } else {
+            // Android 10 ou inferior
+            requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), 100)
         }
     }
 
