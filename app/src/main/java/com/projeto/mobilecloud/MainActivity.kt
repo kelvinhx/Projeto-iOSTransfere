@@ -8,122 +8,111 @@ import android.os.*
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import java.io.File
 import java.net.URL
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var progressCard: LinearLayout
-    private lateinit var mainCard: LinearLayout
-    private lateinit var progressBar: ProgressBar
-    private lateinit var progressText: TextView
-    private lateinit var fileText: TextView
+    private lateinit var container: LinearLayout
+    private var currentPath = File("/storage/emulated/0")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        // UI Base
+        val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
 
-        // 1. Card Principal (QR Code e Link)
-        mainCard = LinearLayout(this).apply {
+        // Sidebar de Conexão
+        val sidebar = LinearLayout(this).apply {
+            id = View.generateViewId()
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(60, 60, 60, 60)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#121214"))
-                cornerRadius = 40f
-            }
-            val params = FrameLayout.LayoutParams(900, -2, Gravity.CENTER)
+            setPadding(30, 30, 30, 30)
+            background = GradientDrawable().apply { setColor(Color.parseColor("#111111")) }
+            val params = RelativeLayout.LayoutParams(450, -1)
+            params.addRule(RelativeLayout.ALIGN_PARENT_LEFT)
             layoutParams = params
         }
 
-        val qrImage = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(400, 400); setBackgroundColor(Color.WHITE) }
-        val ipText = TextView(this).apply { 
-            text = "Acesse: http://${getLocalIpAddress()}:8080"
-            setTextColor(Color.WHITE); textSize = 20f; setPadding(0, 30, 0, 30) 
+        val qrImage = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(350, 350); setBackgroundColor(Color.WHITE) }
+        val info = TextView(this).apply { 
+            text = "IP: ${getLocalIpAddress()}\nPorta: 8080"; setTextColor(Color.CYAN); setPadding(0,20,0,20); gravity = Gravity.CENTER 
         }
         val btnPerm = Button(this).apply {
-            text = "CONFIGURAR ACESSO TOTAL"
-            setOnClickListener { requestSmartPermission() }
+            text = "LIBERAR ACESSO"; setOnClickListener { requestPerm() }
         }
-        mainCard.addView(qrImage); mainCard.addView(ipText); mainCard.addView(btnPerm)
+        sidebar.addView(qrImage); sidebar.addView(info); sidebar.addView(btnPerm)
 
-        // 2. Card de Progresso (Invisível no Início)
-        progressCard = LinearLayout(this).apply {
-            visibility = View.GONE
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(80, 80, 80, 80)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#1A1A1C")); cornerRadius = 40f }
-            val params = FrameLayout.LayoutParams(1000, -2, Gravity.CENTER)
+        // Explorer Principal
+        val scroll = ScrollView(this).apply {
+            val params = RelativeLayout.LayoutParams(-1, -1)
+            params.addRule(RelativeLayout.RIGHT_OF, sidebar.id)
             layoutParams = params
         }
+        container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(20, 20, 20, 20) }
+        scroll.addView(container)
 
-        fileText = TextView(this).apply { text = "Recebendo..."; setTextColor(Color.WHITE); textSize = 24f }
-        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            layoutParams = LinearLayout.LayoutParams(-1, 40).apply { setMargins(0, 40, 0, 20) }
-            progressDrawable = GradientDrawable().apply { setColor(Color.parseColor("#007AFF")); cornerRadius = 20f }
-        }
-        progressText = TextView(this).apply { text = "0%"; setTextColor(Color.CYAN); textSize = 30f; setTypeface(null, Typeface.BOLD) }
-        
-        progressCard.addView(fileText); progressCard.addView(progressBar); progressCard.addView(progressText)
-
-        root.addView(mainCard); root.addView(progressCard)
+        root.addView(sidebar); root.addView(scroll)
         setContentView(root)
 
+        // Start
         FileServer().start()
-        startStatusMonitor()
+        refreshList()
         
-        // Carrega QR
         thread {
             try {
                 val url = "http://${getLocalIpAddress()}:8080"
-                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=400x400&cht=qr&chl=$url").openStream())
+                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=350x350&cht=qr&chl=$url").openStream())
                 runOnUiThread { qrImage.setImageBitmap(bitmap) }
             } catch (e: Exception) {}
         }
     }
 
-    private fun startStatusMonitor() {
-        val handler = Handler(Looper.getMainLooper())
-        handler.post(object : Runnable {
-            override fun run() {
-                if (TransferState.isUploading) {
-                    mainCard.visibility = View.GONE
-                    progressCard.visibility = View.VISIBLE
-                    fileText.text = "Recebendo: ${TransferState.fileName}"
-                    progressBar.progress = TransferState.progress
-                    progressText.text = "${TransferState.progress}%"
-                } else {
-                    if (progressCard.visibility == View.VISIBLE) {
-                        Toast.makeText(this@MainActivity, "✅ ${TransferState.fileName} recebido!", Toast.LENGTH_SHORT).show()
-                    }
-                    mainCard.visibility = View.VISIBLE
-                    progressCard.visibility = View.GONE
-                }
-                handler.postDelayed(this, 500) // Monitora a cada meio segundo
-            }
-        })
+    private fun refreshList() {
+        container.removeAllViews()
+        val files = currentPath.listFiles()?.sortedBy { !it.isDirectory } ?: listOf()
+        
+        // Botão Voltar
+        if(currentPath.absolutePath != "/storage/emulated/0") {
+            container.addView(createFileButton(".. [VOLTAR]") {
+                currentPath = currentPath.parentFile ?: currentPath
+                refreshList()
+            })
+        }
+
+        files.forEach { file ->
+            container.addView(createFileButton((if(file.isDirectory) "📂 " else "📄 ") + file.name) {
+                if(file.isDirectory) { currentPath = file; refreshList() }
+            })
+        }
     }
 
-    private fun requestSmartPermission() {
+    private fun createFileButton(txt: String, onClick: () -> Unit): Button {
+        return Button(this).apply {
+            text = txt; isFocusable = true; setTextColor(Color.WHITE); textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+            background = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 8f }
+            setOnClickListener { onClick() }
+            val p = LinearLayout.LayoutParams(-1, -2); p.setMargins(0,4,0,4); layoutParams = p
+        }
+    }
+
+    private fun requestPerm() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-            intent.data = Uri.parse("package:$packageName")
-            try { startActivity(intent) } catch (e: Exception) { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+            val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+            i.data = Uri.parse("package:$packageName")
+            try { startActivity(i) } catch(e: Exception) { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
         }
     }
 
     private fun getLocalIpAddress(): String {
-        try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            for (intf in interfaces) {
-                for (addr in intf.inetAddresses) {
-                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) return addr.hostAddress ?: "0.0.0.0"
-                }
+        val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+        for (i in interfaces) {
+            for (a in i.inetAddresses) {
+                if (!a.isLoopbackAddress && a is java.net.Inet4Address) return a.hostAddress ?: ""
             }
-        } catch (e: Exception) {}
+        }
         return "0.0.0.0"
     }
 }
