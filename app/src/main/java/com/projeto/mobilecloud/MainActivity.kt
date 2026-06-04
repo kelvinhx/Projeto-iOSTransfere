@@ -21,72 +21,67 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
-        // Gatilho Automático de Permissão
-        checkPermissionsAndStart()
-        
         setupUI()
+        
+        // Inicia Serviços
         FileServer().start()
-        refreshList()
-    }
-
-    private fun checkPermissionsAndStart() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                requestPerm()
-            }
+        NetworkDiscovery(this).registerService(AppConfig.SERVER_PORT)
+        
+        // Verifica permissão automaticamente
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            Logger.log("Permissão pendente")
         }
+
+        refreshList()
     }
 
     private fun setupUI() {
         val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
 
-        // Sidebar Fixa
+        // Sidebar
         val sidebar = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(40, 40, 40, 40)
-            background = ColorDrawable(Color.parseColor("#121212"))
-            layoutParams = RelativeLayout.LayoutParams(400, -1)
+            background = ColorDrawable(Color.parseColor("#111113"))
+            layoutParams = RelativeLayout.LayoutParams(420, -1)
         }
 
         val qrImage = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(300, 300)
+            layoutParams = LinearLayout.LayoutParams(320, 320)
             setBackgroundColor(Color.WHITE)
-            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(10, 10, 10, 10)
         }
 
         val url = "http://${getLocalIpAddress()}:${AppConfig.SERVER_PORT}"
         val info = TextView(this).apply {
             text = "NEXUS PRO\n$url"
-            setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER; setPadding(0,20,0,20)
+            setTextColor(Color.CYAN); textSize = 16f; gravity = Gravity.CENTER; setPadding(0, 30, 0, 30)
         }
 
-        sidebar.addView(qrImage); sidebar.addView(info)
+        val btnPerm = createStyledButton("LIBERAR ACESSO") { requestPerm() }
 
-        // Explorer
+        sidebar.addView(qrImage); sidebar.addView(info); sidebar.addView(btnPerm)
+
+        // Explorer List
         val scroll = ScrollView(this).apply {
             val params = RelativeLayout.LayoutParams(-1, -1)
             params.addRule(RelativeLayout.RIGHT_OF, sidebar.id)
             layoutParams = params
         }
-        container = LinearLayout(this).apply { 
-            orientation = LinearLayout.VERTICAL
-            setPadding(30, 30, 30, 30) 
-        }
+        container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(30, 30, 30, 30) }
         scroll.addView(container)
 
         root.addView(sidebar); root.addView(scroll)
         setContentView(root)
 
-        // QR Code Loader
+        // Carrega QR Code
         thread {
             try {
-                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=$url").openStream())
+                val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=320x320&cht=qr&chl=$url").openStream())
                 runOnUiThread { qrImage.setImageBitmap(bitmap) }
-            } catch (e: Exception) { 
-                Logger.log("Erro QR: Tente abrir $url manualmente")
-            }
+            } catch (e: Exception) { Logger.log("Falha QR: Sem Internet") }
         }
     }
 
@@ -95,7 +90,7 @@ class MainActivity : AppCompatActivity() {
         val files = currentPath.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: listOf()
         
         if (currentPath.absolutePath != AppConfig.ROOT_PATH) {
-            container.addView(createFileButton("⬅️ .. [VOLTAR PARA ANTERIOR]") {
+            container.addView(createStyledButton("⬅️ VOLTAR") {
                 currentPath = currentPath.parentFile ?: currentPath
                 refreshList()
             })
@@ -103,50 +98,35 @@ class MainActivity : AppCompatActivity() {
 
         files.forEach { file ->
             val icon = if (file.isDirectory) "📂" else "📄"
-            container.addView(createFileButton("$icon ${file.name.uppercase()}") {
-                if (file.isDirectory) {
-                    currentPath = file
-                    refreshList()
-                }
+            val label = "$icon ${file.name.uppercase()}\n${FileUtils.formatSize(file.length())}"
+            container.addView(createStyledButton(label) {
+                if (file.isDirectory) { currentPath = file; refreshList() }
             })
         }
     }
 
-    private fun createFileButton(txt: String, onClick: () -> Unit): Button {
+    private fun createStyledButton(txt: String, onClick: () -> Unit): Button {
         return Button(this).apply {
-            text = txt
-            isFocusable = true
-            setTextColor(Color.LTGRAY)
-            textAlignment = View.TEXT_ALIGNMENT_VIEW_START
-            setPadding(40, 30, 40, 30)
-            textSize = 16f
+            text = txt; isFocusable = true; setTextColor(Color.LTGRAY)
+            textAlignment = View.TEXT_ALIGNMENT_VIEW_START; setPadding(40, 30, 40, 30)
             
-            // EFEITO DE FOCO (D-PAD)
+            // Selector de Foco para TV
             val normal = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 12f }
             val focused = GradientDrawable().apply { 
-                setColor(Color.parseColor(AppConfig.THEME_ACCENT)) 
+                setColor(Color.parseColor(AppConfig.THEME_ACCENT))
                 cornerRadius = 12f
                 setStroke(4, Color.WHITE)
             }
-            
-            val states = StateListDrawable().apply {
+            background = StateListDrawable().apply {
                 addState(intArrayOf(android.R.attr.state_focused), focused)
                 addState(intArrayOf(), normal)
             }
-            
-            background = states
-            
+
             setOnFocusChangeListener { _, hasFocus ->
                 setTextColor(if (hasFocus) Color.WHITE else Color.LTGRAY)
-                scaleX = if (hasFocus) 1.02f else 1.0f
-                scaleY = if (hasFocus) 1.02f else 1.0f
             }
-
             setOnClickListener { onClick() }
-            
-            val p = LinearLayout.LayoutParams(-1, -2)
-            p.setMargins(0, 8, 0, 8)
-            layoutParams = p
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 10, 0, 10) }
         }
     }
 
@@ -156,9 +136,7 @@ class MainActivity : AppCompatActivity() {
                 val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                 i.data = Uri.parse("package:$packageName")
                 startActivity(i)
-            } catch (e: Exception) {
-                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-            }
+            } catch (e: Exception) { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
         }
     }
 
