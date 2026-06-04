@@ -1,43 +1,44 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
-    namespace = "com.projeto.mobilecloud"
-    compileSdk = 33
+    namespace 'com.projeto.mobilecloud'
+    compileSdk 33
 
     defaultConfig {
-        applicationId = "com.projeto.mobilecloud"
-        minSdk = 26
-        targetSdk = 33
-        versionCode = 1
-        versionName = "1.0"
+        applicationId "com.projeto.mobilecloud"
+        minSdk 26
+        targetSdk 33
+        versionCode 1
+        versionName "1.0"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            isMinifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = '17'
     }
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.10.1")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.9.0")
+    implementation 'androidx.core:core-ktx:1.10.1'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
     
     // Ktor Server para comunicação com o iPhone
-    implementation("io.ktor:ktor-server-netty:2.3.2")
-    implementation("io.ktor:ktor-server-core:2.3.2")
-    implementation("io.ktor:ktor-server-host-common:2.3.2")
-    implementation("io.ktor:ktor-server-content-negotiation:2.3.2")
+    implementation "io.ktor:ktor-server-netty:2.3.2"
+    implementation "io.ktor:ktor-server-core:2.3.2"
+    implementation "io.ktor:ktor-server-host-common:2.3.2"
+    implementation "io.ktor:ktor-server-content-negotiation:2.3.2"
+    implementation "org.slf4j:slf4j-simple:2.0.7"
 }
