@@ -15,14 +15,25 @@ import kotlin.concurrent.thread
 class MainActivity : AppCompatActivity() {
 
     private lateinit var container: LinearLayout
-    private var currentPath = File("/storage/emulated/0")
+    private var currentPath = File(AppConfig.ROOT_PATH)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        Logger.log("App Iniciado")
 
-        // UI Base
-        val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        setupUI()
+        
+        // Inicia Serviços de Fundo
+        FileServer().start()
+        NetworkDiscovery(this).registerService(AppConfig.SERVER_PORT)
+        
+        loadQRCode()
+        refreshList()
+    }
+
+    private fun setupUI() {
+        val root = RelativeLayout(this).apply { setBackgroundColor(Color.parseColor(AppConfig.THEME_BG)) }
 
         // Sidebar de Conexão
         val sidebar = LinearLayout(this).apply {
@@ -30,22 +41,32 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(30, 30, 30, 30)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#111111")) }
+            background = GradientDrawable().apply { setColor(Color.parseColor("#111113")) }
             val params = RelativeLayout.LayoutParams(450, -1)
-            params.addRule(RelativeLayout.ALIGN_PARENT_LEFT)
             layoutParams = params
         }
 
-        val qrImage = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(350, 350); setBackgroundColor(Color.WHITE) }
-        val info = TextView(this).apply { 
-            text = "IP: ${getLocalIpAddress()}\nPorta: 8080"; setTextColor(Color.CYAN); setPadding(0,20,0,20); gravity = Gravity.CENTER 
+        val qrImage = ImageView(this).apply { 
+            layoutParams = LinearLayout.LayoutParams(350, 350)
+            setBackgroundColor(Color.WHITE)
+            setPadding(10, 10, 10, 10)
         }
+
+        val info = TextView(this).apply {
+            text = "IP: ${getLocalIpAddress()}\nPorta: ${AppConfig.SERVER_PORT}"
+            setTextColor(Color.CYAN); textSize = 16f; setPadding(0, 20, 0, 20); gravity = Gravity.CENTER
+        }
+
         val btnPerm = Button(this).apply {
-            text = "LIBERAR ACESSO"; setOnClickListener { requestPerm() }
+            text = "LIBERAR ACESSO"
+            isFocusable = true
+            setOnClickListener { requestPerm() }
+            background = GradientDrawable().apply { setColor(Color.parseColor(AppConfig.THEME_ACCENT)); cornerRadius = 10f }
         }
+
         sidebar.addView(qrImage); sidebar.addView(info); sidebar.addView(btnPerm)
 
-        // Explorer Principal
+        // Explorer
         val scroll = ScrollView(this).apply {
             val params = RelativeLayout.LayoutParams(-1, -1)
             params.addRule(RelativeLayout.RIGHT_OF, sidebar.id)
@@ -56,17 +77,16 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(sidebar); root.addView(scroll)
         setContentView(root)
-
-        // Start
-        FileServer().start()
-        refreshList()
+        
+        // Atribui a imagem do QR ao sidebar futuramente
+        this.findViewById<ImageView>(qrImage.id)?.let { /* placeholder */ }
         
         thread {
             try {
-                val url = "http://${getLocalIpAddress()}:8080"
+                val url = "http://${getLocalIpAddress()}:${AppConfig.SERVER_PORT}"
                 val bitmap = BitmapFactory.decodeStream(URL("https://chart.googleapis.com/chart?chs=350x350&cht=qr&chl=$url").openStream())
                 runOnUiThread { qrImage.setImageBitmap(bitmap) }
-            } catch (e: Exception) {}
+            } catch (e: Exception) { Logger.log("Erro QR: ${e.message}") }
         }
     }
 
@@ -74,8 +94,7 @@ class MainActivity : AppCompatActivity() {
         container.removeAllViews()
         val files = currentPath.listFiles()?.sortedBy { !it.isDirectory } ?: listOf()
         
-        // Botão Voltar
-        if(currentPath.absolutePath != "/storage/emulated/0") {
+        if (currentPath.absolutePath != AppConfig.ROOT_PATH) {
             container.addView(createFileButton(".. [VOLTAR]") {
                 currentPath = currentPath.parentFile ?: currentPath
                 refreshList()
@@ -83,8 +102,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         files.forEach { file ->
-            container.addView(createFileButton((if(file.isDirectory) "📂 " else "📄 ") + file.name) {
-                if(file.isDirectory) { currentPath = file; refreshList() }
+            val label = (if (file.isDirectory) "📂 " else "📄 ") + file.name + " (" + FileUtils.formatSize(file.length()) + ")"
+            container.addView(createFileButton(label) {
+                if (file.isDirectory) { currentPath = file; refreshList() }
             })
         }
     }
@@ -99,10 +119,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestPerm() {
+        Logger.log("Solicitando Permissão")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-            i.data = Uri.parse("package:$packageName")
-            try { startActivity(i) } catch(e: Exception) { startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+            try {
+                val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                i.data = Uri.parse("package:$packageName")
+                startActivity(i)
+            } catch (e: Exception) {
+                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            }
         }
     }
 
@@ -115,4 +140,6 @@ class MainActivity : AppCompatActivity() {
         }
         return "0.0.0.0"
     }
+    
+    private fun loadQRCode() { /* Gerenciado na thread de UI acima */ }
 }
