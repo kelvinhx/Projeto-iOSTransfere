@@ -20,19 +20,12 @@ class FileServer {
         thread {
             embeddedServer(Netty, port = 8080) {
                 routing {
-                    get("/") { 
-                        call.respondText(WebInterface.getHtml(), ContentType.Text.Html) 
-                    }
+                    get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
 
-                    // Listagem de Arquivos
                     get("/api/list") {
-                        val subPath = call.parameters["path"] ?: ""
-                        val folder = if (subPath.isEmpty()) baseDir else File(baseDir, subPath)
-                        
-                        if (!folder.exists() || !folder.isDirectory) {
-                            call.respond(HttpStatusCode.NotFound, "Pasta não encontrada")
-                            return@get
-                        }
+                        val path = call.parameters["path"] ?: ""
+                        val folder = File(baseDir, path)
+                        if (!folder.exists()) return@get call.respond(HttpStatusCode.NotFound)
 
                         val files = folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: listOf()
                         val json = JSONArray()
@@ -47,41 +40,36 @@ class FileServer {
                         call.respondText(json.toString(), ContentType.Application.Json)
                     }
 
-                    // Upload com correção de forEachPart
-                    post("/upload") {
-                        val path = call.parameters["path"] ?: ""
-                        val uploadDir = File(baseDir, path)
-                        if (!uploadDir.exists()) uploadDir.mkdirs()
-                        
-                        val multipart = call.receiveMultipart()
-                        multipart.forEachPart { part ->
-                            if (part is PartData.FileItem) {
-                                val fileName = part.originalFileName ?: "file_${System.currentTimeMillis()}"
-                                val file = File(uploadDir, fileName)
-                                part.streamProvider().use { input ->
-                                    file.outputStream().buffered().use { output ->
-                                        input.copyTo(output)
-                                    }
-                                }
-                            }
-                            part.dispose()
-                        }
-                        call.respond(HttpStatusCode.OK, "Upload concluído")
-                    }
-
-                    // Ações de Gerenciamento
                     post("/api/action") {
-                        val params = call.receiveParameters()
-                        val action = params["action"]
-                        val target = File(baseDir, params["path"] ?: "")
-                        
+                        val p = call.receiveParameters()
+                        val action = p["action"]
+                        val file = File(baseDir, p["path"] ?: "")
+                        val dest = File(baseDir, p["dest"] ?: "")
+
                         val success = when(action) {
-                            "delete" -> target.deleteRecursively()
-                            "rename" -> target.renameTo(File(target.parent, params["newName"] ?: "renomeado"))
-                            "mkdir" -> File(target, params["newName"] ?: "Nova Pasta").mkdirs()
+                            "delete" -> file.deleteRecursively()
+                            "rename" -> file.renameTo(dest)
+                            "move" -> file.renameTo(File(dest, file.name))
+                            "copy" -> {
+                                try { file.copyRecursively(File(dest, file.name), true); true } catch(e: Exception) { false }
+                            }
+                            "mkdir" -> File(file, p["name"] ?: "Nova Pasta").mkdirs()
                             else -> false
                         }
                         call.respond(if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
+                    }
+
+                    post("/upload") {
+                        val path = call.parameters["path"] ?: ""
+                        val uploadDir = File(baseDir, path)
+                        call.receiveMultipart().forEachPart { part ->
+                            if (part is PartData.FileItem) {
+                                val f = File(uploadDir, part.originalFileName ?: "file")
+                                part.streamProvider().use { input -> f.outputStream().use { input.copyTo(it) } }
+                            }
+                            part.dispose()
+                        }
+                        call.respond(HttpStatusCode.OK)
                     }
                 }
             }.start(wait = true)
