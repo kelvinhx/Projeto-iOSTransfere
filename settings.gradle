@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "MobileCloudApp"
-include(":app")
+include ':app'
