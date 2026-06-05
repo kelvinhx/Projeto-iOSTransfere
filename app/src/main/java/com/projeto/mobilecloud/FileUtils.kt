@@ -2,6 +2,7 @@ package com.projeto.mobilecloud
 
 import android.os.Environment
 import android.os.StatFs
+import android.webkit.MimeTypeMap
 import java.io.File
 import java.text.DecimalFormat
 
@@ -13,9 +14,14 @@ object FileUtils {
             "jpg", "png", "webp" -> "🖼️"
             "mp4", "mkv", "avi" -> "🎬"
             "mp3", "wav" -> "🎵"
-            "zip", "rar", "7z" -> "📦"
+            "zip", "rar" -> "📦"
             else -> "📄"
         }
+    }
+
+    fun getMimeType(file: File): String {
+        val extension = file.extension.lowercase()
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream"
     }
 
     fun formatSize(size: Long): String {
@@ -25,16 +31,12 @@ object FileUtils {
         return DecimalFormat("#,##0.#").format(size / Math.pow(1024.0, digitGroups.toDouble())) + " " + units[digitGroups]
     }
 
-    // Retorna [Espaço Livre, Espaço Total] formatado
     fun getStorageInfo(): Pair<String, String> {
         val path = Environment.getExternalStorageDirectory()
         val stat = StatFs(path.path)
-        val blockSize = stat.blockSizeLong
-        val availableBlocks = stat.availableBlocksLong
-        val totalBlocks = stat.blockCountLong
         return Pair(
-            formatSize(availableBlocks * blockSize),
-            formatSize(totalBlocks * blockSize)
+            formatSize(stat.availableBlocksLong * stat.blockSizeLong),
+            formatSize(stat.blockCountLong * stat.blockSizeLong)
         )
     }
 }
