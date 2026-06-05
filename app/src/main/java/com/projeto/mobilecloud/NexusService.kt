@@ -13,14 +13,12 @@ class NexusService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val channelId = "NexusServer"
         
-        // Criar canal de notificação para Android 8.0+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Nexus Engine", NotificationManager.IMPORTANCE_LOW)
             val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            manager?.createNotificationChannel(channel)
         }
 
-        // Notificação que mantém o serviço vivo (Foreground)
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Nexus Pro Ativo")
             .setContentText("Servidor rodando em segundo plano")
@@ -29,7 +27,6 @@ class NexusService : Service() {
 
         startForeground(1, notification)
 
-        // Inicia o servidor Ktor se ainda não estiver rodando
         if (server == null) {
             server = FileServer(this)
             server?.start()
