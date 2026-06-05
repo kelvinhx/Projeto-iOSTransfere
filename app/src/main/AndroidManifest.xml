@@ -7,6 +7,14 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!-- Necessário para Android 11+ para ver outros apps de player -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="video/*" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:label="Nexus Explorer Pro"
@@ -14,7 +22,11 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
         
-        <service android:name=".NexusService" android:enabled="true" android:exported="false" android:foregroundServiceType="dataSync" />
+        <service 
+            android:name=".NexusService" 
+            android:enabled="true" 
+            android:exported="false" 
+            android:foregroundServiceType="dataSync" />
 
         <activity
             android:name=".MainActivity"
@@ -23,17 +35,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-                <!-- GATILHO PARA ÍCONE NA TV ANDROID -->
+                <!-- Ícone na tela inicial da Android TV -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="${"$"}{applicationId}.provider"
+            android:authorities="${applicationId}.provider"
             android:exported="false"
             android:grantUriPermissions="true">
-            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+            <meta-data 
+                android:name="android.support.FILE_PROVIDER_PATHS" 
+                android:resource="@xml/file_paths" />
         </provider>
     </application>
 </manifest>
