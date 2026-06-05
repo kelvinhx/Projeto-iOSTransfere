@@ -19,7 +19,6 @@ import androidx.core.content.FileProvider
 
 object ServerState {
     var isClientConnected = false
-    var lastClientIp = ""
 }
 
 class FileServer(private val androidContext: Context) {
@@ -32,13 +31,14 @@ class FileServer(private val androidContext: Context) {
                     routing {
                         get("/") { 
                             ServerState.isClientConnected = true
-                            ServerState.lastClientIp = call.request.origin.remoteHost
                             call.respondText(WebInterface.getHtml(), ContentType.Text.Html) 
                         }
                         
                         get("/api/storage") {
                             val info = FileUtils.getStorageInfo()
-                            call.respondText("{\"free\":\"${info.first}\",\"total\":\"${info.second}\"}", ContentType.Application.Json)
+                            val json = JSONObject()
+                            json.put("free", info.first).put("total", info.second)
+                            call.respondText(json.toString(), ContentType.Application.Json)
                         }
 
                         get("/api/list") {
@@ -46,8 +46,7 @@ class FileServer(private val androidContext: Context) {
                             val folder = File(baseDir, path)
                             val json = JSONArray()
                             
-                            val files = folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-                            files?.forEach {
+                            folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
                                 val obj = JSONObject()
                                 obj.put("name", it.name)
                                 obj.put("isDir", it.isDirectory)
