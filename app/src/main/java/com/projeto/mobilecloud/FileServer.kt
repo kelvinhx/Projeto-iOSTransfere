@@ -27,29 +27,21 @@ class FileServer(private val context: Context) {
                     routing {
                         get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
                         
-                        // Rota de Streaming (Permite ver vídeo/foto no iPhone)
-                        get("/api/stream") {
-                            val path = call.parameters["path"] ?: ""
-                            val file = File(baseDir, path)
-                            if (file.exists()) {
-                                call.respondFile(file)
-                            } else {
-                                call.respond(HttpStatusCode.NotFound)
-                            }
+                        get("/api/logs") {
+                            val status = Logger.getSystemStatus(context)
+                            call.respondText("$status\n\n${Logger.getLogs()}", ContentType.Text.Plain)
                         }
 
                         get("/api/storage") {
                             val info = FileUtils.getStorageInfo()
-                            val json = JSONObject()
-                            json.put("free", info.first).put("total", info.second)
-                            call.respondText(json.toString(), ContentType.Application.Json)
+                            call.respondText("{\"free\":\"${info.first}\",\"total\":\"${info.second}\"}", ContentType.Application.Json)
                         }
 
                         get("/api/list") {
                             val path = call.parameters["path"] ?: ""
                             val folder = File(baseDir, path)
                             val json = JSONArray()
-                            folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
+                            folder.listFiles()?.sortedBy { !it.isDirectory }?.forEach {
                                 val obj = JSONObject()
                                 obj.put("name", it.name).put("isDir", it.isDirectory)
                                 obj.put("icon", FileUtils.getFileIcon(it)).put("size", FileUtils.formatSize(it.length()))
@@ -59,40 +51,47 @@ class FileServer(private val context: Context) {
                             call.respondText(json.toString(), ContentType.Application.Json)
                         }
 
-                        get("/api/open") {
-                            val path = call.parameters["path"] ?: ""
-                            val file = File(baseDir, path)
-                            if (file.exists()) {
-                                openOnTV(file)
-                                call.respondText("Comando enviado")
-                            } else { call.respond(HttpStatusCode.NotFound) }
-                        }
-
+                        // UPLOAD OTIMIZADO PARA ARQUIVOS GRANDES
                         post("/upload") {
                             val path = call.parameters["path"] ?: ""
                             val uploadDir = File(baseDir, path)
+                            if (!uploadDir.exists()) uploadDir.mkdirs()
+
                             call.receiveMultipart().forEachPart { part ->
                                 if (part is PartData.FileItem) {
                                     val f = File(uploadDir, part.originalFileName ?: "file")
-                                    part.streamProvider().use { input -> f.outputStream().use { input.copyTo(it) } }
+                                    Logger.log("Iniciando Stream: ${f.name}")
+                                    
+                                    part.streamProvider().use { input ->
+                                        f.outputStream().use { output ->
+                                            val buffer = ByteArray(AppConfig.BUFFER_SIZE)
+                                            var bytesRead: Int
+                                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                                output.write(buffer, 0, bytesRead)
+                                            }
+                                        }
+                                    }
                                 }
                                 part.dispose()
                             }
                             call.respond(HttpStatusCode.OK)
                         }
+                        
+                        // DELETAR E RENOMEAR (Protegidos)
+                        post("/api/action") {
+                            val p = call.receiveParameters()
+                            val action = p["action"]
+                            val target = File(baseDir, p["path"] ?: "")
+                            val success = when(action) {
+                                "delete" -> target.deleteRecursively()
+                                "rename" -> target.renameTo(File(target.parent, p["dest"] ?: "novo"))
+                                else -> false
+                            }
+                            call.respond(if(success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
+                        }
                     }
                 }.start(wait = true)
-            } catch (e: Exception) { }
+            } catch (e: Exception) { Logger.log("Falha Crítica: ${e.message}") }
         }
-    }
-
-    private fun openOnTV(file: File) {
-        try {
-            val intent = Intent(Intent.ACTION_VIEW)
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-            intent.setDataAndType(uri, FileUtils.getMimeType(file))
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        } catch (e: Exception) { }
     }
 }
