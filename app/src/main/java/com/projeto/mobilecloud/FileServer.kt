@@ -18,7 +18,9 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 
 object ServerState {
-    var isClientConnected = false
+    var isConnected = false
+    var clientName = "Desconhecido"
+    var lastInteraction = 0L
 }
 
 class FileServer(private val androidContext: Context) {
@@ -30,14 +32,15 @@ class FileServer(private val androidContext: Context) {
                 embeddedServer(Netty, port = AppConfig.SERVER_PORT) {
                     routing {
                         get("/") { 
-                            ServerState.isClientConnected = true
+                            val userAgent = call.request.headers["User-Agent"] ?: ""
+                            ServerState.clientName = if (userAgent.contains("iPhone")) "iPhone" else "Navegador"
+                            ServerState.isConnected = true
+                            ServerState.lastInteraction = System.currentTimeMillis()
                             call.respondText(WebInterface.getHtml(), ContentType.Text.Html) 
                         }
                         
-                        get("/api/storage") {
-                            val info = FileUtils.getStorageInfo()
-                            val json = JSONObject()
-                            json.put("free", info.first).put("total", info.second)
+                        get("/api/status") {
+                            val json = JSONObject().put("connected", ServerState.isConnected).put("client", ServerState.clientName)
                             call.respondText(json.toString(), ContentType.Application.Json)
                         }
 
@@ -45,55 +48,44 @@ class FileServer(private val androidContext: Context) {
                             val path = call.parameters["path"] ?: ""
                             val folder = File(baseDir, path)
                             val json = JSONArray()
-                            
                             folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
                                 val obj = JSONObject()
-                                obj.put("name", it.name)
-                                obj.put("isDir", it.isDirectory)
-                                obj.put("icon", FileUtils.getFileIcon(it))
-                                val sizeVal = if(it.isDirectory) FileUtils.getFolderSize(it) else it.length()
-                                obj.put("size", FileUtils.formatSize(sizeVal))
-                                obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
+                                obj.put("name", it.name).put("isDir", it.isDirectory).put("icon", FileUtils.getFileIcon(it))
+                                val size = if(it.isDirectory) FileUtils.getFolderSize(it) else it.length()
+                                obj.put("size", FileUtils.formatSize(size)).put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
                                 json.put(obj)
                             }
                             call.respondText(json.toString(), ContentType.Application.Json)
                         }
 
-                        get("/api/open") {
-                            val path = call.parameters["path"] ?: ""
-                            val file = File(baseDir, path)
-                            if (file.exists()) {
-                                openOnTV(file)
-                                call.respondText("OK")
-                            } else { call.respond(HttpStatusCode.NotFound) }
-                        }
-
-                        get("/api/stream") {
-                            val path = call.parameters["path"] ?: ""
-                            val file = File(baseDir, path)
-                            if (file.exists()) call.respondFile(file) else call.respond(HttpStatusCode.NotFound)
-                        }
-
                         post("/api/action") {
                             val p = call.receiveParameters()
                             val action = p["action"]
-                            val target = File(baseDir, p["path"] ?: "")
+                            val src = File(baseDir, p["path"] ?: "")
+                            val dst = File(baseDir, p["dest"] ?: "")
+                            
                             val success = when(action) {
-                                "delete" -> target.deleteRecursively()
-                                "rename" -> target.renameTo(File(target.parent, p["dest"] ?: "novo"))
+                                "delete" -> src.deleteRecursively()
+                                "rename", "move" -> src.renameTo(dst)
+                                "copy" -> try { src.copyRecursively(dst, true); true } catch(e: Exception) { false }
+                                "mkdir" -> File(src, p["name"] ?: "Nova Pasta").mkdirs()
                                 else -> false
                             }
                             call.respond(if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
                         }
 
+                        get("/api/stream") {
+                            val file = File(baseDir, call.parameters["path"] ?: "")
+                            if (file.exists()) call.respondFile(file) else call.respond(HttpStatusCode.NotFound)
+                        }
+
                         post("/upload") {
-                            val path = call.parameters["path"] ?: ""
-                            val uploadDir = File(baseDir, path)
+                            val uploadDir = File(baseDir, call.parameters["path"] ?: "")
                             if (!uploadDir.exists()) uploadDir.mkdirs()
                             call.receiveMultipart().forEachPart { part ->
                                 if (part is PartData.FileItem) {
                                     val f = File(uploadDir, part.originalFileName ?: "file")
-                                    part.streamProvider().use { input -> f.outputStream().use { input.copyTo(it) } }
+                                    part.streamProvider().use { i -> f.outputStream().use { o -> i.copyTo(o) } }
                                 }
                                 part.dispose()
                             }
