@@ -21,7 +21,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
-        // Inicia o Serviço de Segundo Plano
+        // Inicia o Serviço
         val serviceIntent = Intent(this, NexusService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -32,16 +32,6 @@ class MainActivity : AppCompatActivity() {
         setupUI()
     }
 
-    // COMPATIBILIDADE: Gerencia o botão VOLTAR do controle remoto da TV
-    override fun onBackPressed() {
-        if (currentPath.absolutePath != AppConfig.ROOT_PATH) {
-            currentPath = currentPath.parentFile ?: File(AppConfig.ROOT_PATH)
-            refreshList()
-        } else {
-            super.onBackPressed() // Sai do app se estiver na raiz
-        }
-    }
-
     override fun onResume() {
         super.onResume()
         refreshList()
@@ -50,30 +40,27 @@ class MainActivity : AppCompatActivity() {
     private fun setupUI() {
         val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
 
-        // Sidebar de Conexão
         val sidebar = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            setPadding(40, 40, 40, 40); background = ColorDrawable(Color.parseColor("#111113"))
+            setPadding(40, 40, 40, 40); background = ColorDrawable(Color.parseColor("#0A0A0C"))
             layoutParams = RelativeLayout.LayoutParams(420, -1)
         }
 
         val qrImage = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(320, 320)
-            setBackgroundColor(Color.WHITE); setPadding(10, 10, 10, 10)
+            layoutParams = LinearLayout.LayoutParams(300, 300)
+            setBackgroundColor(Color.WHITE); setPadding(8, 8, 8, 8)
         }
 
         val url = "http://${NetworkManager.getLocalIpAddress()}:${AppConfig.SERVER_PORT}"
         val info = TextView(this).apply {
-            text = "NEXUS PRO\n$url"
-            setTextColor(Color.CYAN); textSize = 14f; gravity = Gravity.CENTER; setPadding(0, 30, 0, 30)
+            text = "NEXUS ENGINE\nSTATUS: ONLINE\n$url"
+            setTextColor(Color.parseColor("#34C759")); textSize = 13f; gravity = Gravity.CENTER; setPadding(0, 25, 0, 0)
         }
 
         sidebar.addView(qrImage); sidebar.addView(info)
 
-        // Explorador List (ScrollView com foco otimizado)
         val scroll = ScrollView(this).apply {
-            id = View.generateViewId()
             val params = RelativeLayout.LayoutParams(-1, -1)
             params.addRule(RelativeLayout.RIGHT_OF, sidebar.id)
             layoutParams = params
@@ -84,10 +71,9 @@ class MainActivity : AppCompatActivity() {
         root.addView(sidebar); root.addView(scroll)
         setContentView(root)
 
-        // Carrega QR Code via API
         thread {
             try {
-                val bitmap = BitmapFactory.decodeStream(URL("https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${Uri.encode(url)}").openStream())
+                val bitmap = BitmapFactory.decodeStream(URL("https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${Uri.encode(url)}").openStream())
                 runOnUiThread { qrImage.setImageBitmap(bitmap) }
             } catch (e: Exception) { }
         }
@@ -97,7 +83,7 @@ class MainActivity : AppCompatActivity() {
         container.removeAllViews()
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            container.addView(createStyledButton("⚠️ LIBERAR ACESSO") {
+            container.addView(createStyledButton("⚠️ ATIVAR ACESSO AO DISCO") {
                 val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                 i.data = Uri.parse("package:$packageName")
                 startActivity(i)
@@ -110,12 +96,7 @@ class MainActivity : AppCompatActivity() {
         files.forEach { file ->
             val label = "${FileUtils.getFileIcon(file)} ${file.name.uppercase()}\n${FileUtils.formatSize(file.length())}"
             container.addView(createStyledButton(label) {
-                if (file.isDirectory) {
-                    currentPath = file
-                    refreshList()
-                } else {
-                    // Futuro: Menu de ações na TV
-                }
+                if (file.isDirectory) { currentPath = file; refreshList() }
             })
         }
     }
@@ -124,20 +105,16 @@ class MainActivity : AppCompatActivity() {
         return Button(this).apply {
             text = txt; isFocusable = true; setTextColor(Color.LTGRAY)
             textAlignment = View.TEXT_ALIGNMENT_VIEW_START; setPadding(40, 30, 40, 30)
-            
-            // Layout compatível com D-Pad de qualquer marca de TV
-            val normal = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 12f }
+            val normal = GradientDrawable().apply { setColor(Color.parseColor("#161618")); cornerRadius = 10f }
             val focused = GradientDrawable().apply { 
-                setColor(Color.parseColor(AppConfig.THEME_ACCENT))
-                cornerRadius = 12f; setStroke(4, Color.WHITE)
+                setColor(Color.parseColor(AppConfig.THEME_ACCENT)); cornerRadius = 10f; setStroke(4, Color.WHITE) 
             }
             background = StateListDrawable().apply {
                 addState(intArrayOf(android.R.attr.state_focused), focused)
                 addState(intArrayOf(), normal)
             }
-            
             setOnClickListener { onClick() }
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 10, 0, 10) }
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 8, 0, 8) }
         }
     }
 }
