@@ -2,16 +2,32 @@ package com.projeto.mobilecloud
 
 import android.os.Environment
 import android.os.StatFs
-import android.webkit.MimeTypeMap
 import java.io.File
 import java.text.DecimalFormat
 
 object FileUtils {
-    fun getFileIcon(file: File): String = if (file.isDirectory) "📁" else "📄"
+    fun getFileIcon(file: File): String {
+        if (file.isDirectory) return "📁"
+        return when (file.extension.lowercase()) {
+            "apk" -> "🤖"
+            "jpg", "jpeg", "png", "webp" -> "🖼️"
+            "mp4", "mkv" -> "🎬"
+            "mp3" -> "🎵"
+            else -> "📄"
+        }
+    }
 
-    fun getMimeType(file: File): String {
-        val extension = file.extension.lowercase()
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream"
+    // Soma o tamanho de todos os arquivos dentro de uma pasta
+    fun getFolderSize(file: File): Long {
+        if (file.isFile) return file.length()
+        var size: Long = 0
+        val files = file.listFiles()
+        if (files != null) {
+            for (f in files) {
+                size += if (f.isDirectory) getFolderSize(f) else f.length()
+            }
+        }
+        return size
     }
 
     fun formatSize(size: Long): String {
@@ -22,8 +38,16 @@ object FileUtils {
     }
 
     fun getStorageInfo(): Pair<String, String> {
-        val path = Environment.getExternalStorageDirectory()
-        val stat = StatFs(path.path)
+        val stat = StatFs(Environment.getExternalStorageDirectory().path)
         return Pair(formatSize(stat.availableBytes), formatSize(stat.totalBytes))
+    }
+
+    fun getMimeType(file: File): String {
+        return when(file.extension.lowercase()) {
+            "jpg", "jpeg", "png" -> "image/jpeg"
+            "mp4" -> "video/mp4"
+            "apk" -> "application/vnd.android.package-archive"
+            else -> "application/octet-stream"
+        }
     }
 }
