@@ -1,32 +1,31 @@
 package com.projeto.mobilecloud
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Environment
 import android.os.StatFs
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import java.io.File
 import java.text.DecimalFormat
 
 object FileUtils {
-    fun getFileIcon(file: File): String {
-        if (file.isDirectory) return "📁"
-        return when (file.extension.lowercase()) {
-            "apk" -> "🤖"
-            "jpg", "jpeg", "png", "webp" -> "🖼️"
-            "mp4", "mkv" -> "🎬"
-            "mp3" -> "🎵"
-            else -> "📄"
-        }
+    fun getFileIcon(file: File) = if (file.isDirectory) "📁" else "📄"
+
+    fun openFile(context: Context, file: File) {
+        val intent = Intent(Intent.ACTION_VIEW)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val extension = file.extension.lowercase()
+        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
+        intent.setDataAndType(uri, mimeType)
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
     }
 
-    // Soma o tamanho de todos os arquivos dentro de uma pasta
     fun getFolderSize(file: File): Long {
-        if (file.isFile) return file.length()
         var size: Long = 0
-        val files = file.listFiles()
-        if (files != null) {
-            for (f in files) {
-                size += if (f.isDirectory) getFolderSize(f) else f.length()
-            }
-        }
+        file.listFiles()?.forEach { size += if (it.isDirectory) getFolderSize(it) else it.length() }
         return size
     }
 
@@ -40,14 +39,5 @@ object FileUtils {
     fun getStorageInfo(): Pair<String, String> {
         val stat = StatFs(Environment.getExternalStorageDirectory().path)
         return Pair(formatSize(stat.availableBytes), formatSize(stat.totalBytes))
-    }
-
-    fun getMimeType(file: File): String {
-        return when(file.extension.lowercase()) {
-            "jpg", "jpeg", "png" -> "image/jpeg"
-            "mp4" -> "video/mp4"
-            "apk" -> "application/vnd.android.package-archive"
-            else -> "application/octet-stream"
-        }
     }
 }
