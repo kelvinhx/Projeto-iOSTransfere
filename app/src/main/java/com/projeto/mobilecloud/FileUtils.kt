@@ -13,14 +13,28 @@ import java.text.DecimalFormat
 object FileUtils {
     fun getFileIcon(file: File) = if (file.isDirectory) "📁" else "📄"
 
-    fun openFile(context: Context, file: File) {
-        val intent = Intent(Intent.ACTION_VIEW)
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+    fun getMimeType(file: File): String {
         val extension = file.extension.lowercase()
-        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
-        intent.setDataAndType(uri, mimeType)
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "application/octet-stream"
+    }
+
+    fun openFile(context: Context, file: File) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+            val mimeType = getMimeType(file)
+            
+            if (file.extension.lowercase() == "apk") {
+                intent.setDataAndType(uri, "application/vnd.android.package-archive")
+            } else {
+                intent.setDataAndType(uri, mimeType)
+            }
+            
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Logger.log("Erro ao abrir: ${e.message}")
+        }
     }
 
     fun getFolderSize(file: File): Long {
