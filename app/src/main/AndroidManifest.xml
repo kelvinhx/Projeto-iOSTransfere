@@ -8,8 +8,8 @@
 
     <application
         android:allowBackup="true"
-        android:label="Nexus Explorer Pro"
-        android:theme="@style/Theme.AppCompat.NoActionBar"
+        android:label="Nexus Pro"
+        android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true">
         
