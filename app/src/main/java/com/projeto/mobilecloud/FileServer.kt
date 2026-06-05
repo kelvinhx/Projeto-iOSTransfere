@@ -17,6 +17,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 
+object ServerState {
+    var isClientConnected = false
+    var lastClientIp = ""
+}
+
 class FileServer(private val androidContext: Context) {
     private val baseDir = File(AppConfig.ROOT_PATH)
 
@@ -25,33 +30,32 @@ class FileServer(private val androidContext: Context) {
             try {
                 embeddedServer(Netty, port = AppConfig.SERVER_PORT) {
                     routing {
-                        get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
+                        get("/") { 
+                            ServerState.isClientConnected = true
+                            ServerState.lastClientIp = call.request.origin.remoteHost
+                            call.respondText(WebInterface.getHtml(), ContentType.Text.Html) 
+                        }
                         
                         get("/api/storage") {
                             val info = FileUtils.getStorageInfo()
-                            val json = JSONObject()
-                            json.put("free", info.first).put("total", info.second)
-                            call.respondText(json.toString(), ContentType.Application.Json)
+                            call.respondText("{\"free\":\"${info.first}\",\"total\":\"${info.second}\"}", ContentType.Application.Json)
                         }
 
                         get("/api/list") {
                             val path = call.parameters["path"] ?: ""
                             val folder = File(baseDir, path)
                             val json = JSONArray()
-                            if (folder.exists() && folder.isDirectory) {
-                                folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
-                                    val obj = JSONObject()
-                                    obj.put("name", it.name)
-                                    obj.put("isDir", it.isDirectory)
-                                    obj.put("icon", FileUtils.getFileIcon(it))
-                                    
-                                    // DINÂMICA: Soma o tamanho se for pasta, senão pega o tamanho do arquivo
-                                    val sizeVal = if(it.isDirectory) FileUtils.getFolderSize(it) else it.length()
-                                    obj.put("size", FileUtils.formatSize(sizeVal))
-                                    
-                                    obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
-                                    json.put(obj)
-                                }
+                            
+                            val files = folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                            files?.forEach {
+                                val obj = JSONObject()
+                                obj.put("name", it.name)
+                                obj.put("isDir", it.isDirectory)
+                                obj.put("icon", FileUtils.getFileIcon(it))
+                                val sizeVal = if(it.isDirectory) FileUtils.getFolderSize(it) else it.length()
+                                obj.put("size", FileUtils.formatSize(sizeVal))
+                                obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
+                                json.put(obj)
                             }
                             call.respondText(json.toString(), ContentType.Application.Json)
                         }
@@ -61,7 +65,7 @@ class FileServer(private val androidContext: Context) {
                             val file = File(baseDir, path)
                             if (file.exists()) {
                                 openOnTV(file)
-                                call.respondText("Abrindo na TV")
+                                call.respondText("OK")
                             } else { call.respond(HttpStatusCode.NotFound) }
                         }
 
@@ -98,7 +102,7 @@ class FileServer(private val androidContext: Context) {
                         }
                     }
                 }.start(wait = true)
-            } catch (e: Exception) { Logger.log("Erro: ${e.message}") }
+            } catch (e: Exception) { }
         }
     }
 
