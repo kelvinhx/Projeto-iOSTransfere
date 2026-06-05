@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Permite compartilhar arquivos da memória interna principal -->
+    <external-path name="external_files" path="." />
+    <!-- Permite compartilhar arquivos da raiz do sistema (se houver permissão) -->
+    <root-path name="root" path="." />
+</paths>
