@@ -8,153 +8,114 @@ object WebInterface {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <title>Nexus Explorer Pro</title>
+            <title>Arquivos</title>
             <style>
-                :root { --blue: #0A84FF; --green: #30D158; --red: #FF453A; --gray: #8E8E93; }
-                * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; margin: 0; padding-bottom: 100px; overflow-x: hidden; }
+                :root { --ios-blue: #007AFF; --ios-bg: #F2F2F7; --ios-card: #FFFFFF; }
+                @media (prefers-color-scheme: dark) { :root { --ios-bg: #000000; --ios-card: #1C1C1E; } }
                 
-                /* Header Estilo Vidro */
-                .header { background: rgba(18, 18, 18, 0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 1000; padding: 15px; border-bottom: 0.5px solid #333; }
-                .nav-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-                .search-container { position: relative; width: 100%; }
-                .search-bar { width: 100%; padding: 10px 15px; border-radius: 10px; border: none; background: #1C1C1E; color: #fff; font-size: 16px; outline: none; }
+                body { font-family: -apple-system, sans-serif; background: var(--ios-bg); color: currentColor; margin: 0; padding-bottom: 100px; }
                 
-                /* Lista de Itens */
-                .list-container { padding: 10px; }
-                .item { background: #1C1C1E; border-radius: 14px; margin-bottom: 10px; display: flex; align-items: center; padding: 12px; transition: transform 0.1s; border: 0.5px solid #2C2C2E; }
-                .item:active { transform: scale(0.98); background: #2C2C2E; }
-                .file-icon { font-size: 28px; margin-right: 15px; display: flex; align-items: center; justify-content: center; width: 45px; height: 45px; background: rgba(255,255,255,0.05); border-radius: 10px; }
-                .file-info { flex: 1; min-width: 0; }
-                .file-name { font-size: 16px; font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                .file-size { font-size: 12px; color: var(--gray); }
+                /* Header iOS 17 */
+                .header { background: rgba(var(--ios-card), 0.7); backdrop-filter: blur(20px); position: sticky; top: 0; padding: 20px 15px; z-index: 100; display: flex; justify-content: space-between; align-items: center; }
+                h1 { font-size: 34px; margin: 0; font-weight: 700; }
                 
-                /* Botões e Ações */
-                .btn { background: var(--blue); color: #fff; border: none; padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-                .btn-icon { background: none; border: none; color: var(--blue); font-size: 20px; padding: 8px; }
+                .search-box { background: rgba(118, 118, 128, 0.12); border-radius: 10px; padding: 8px 12px; margin: 10px 15px; display: flex; align-items: center; }
+                .search-input { border: none; background: transparent; color: inherit; width: 100%; font-size: 17px; outline: none; }
+
+                /* Grid de Arquivos */
+                .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 15px; }
+                .file-card { text-align: center; position: relative; }
+                .icon-box { background: var(--ios-card); aspect-ratio: 1/1; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 40px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 8px; overflow: hidden; }
+                .icon-box img { width: 100%; height: 100%; object-fit: cover; }
+                .name { font-size: 12px; font-weight: 400; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
                 
-                /* Modal de Visualização */
-                #preview-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; z-index: 2000; flex-direction: column; align-items: center; justify-content: center; }
-                .close-btn { position: absolute; top: 40px; right: 20px; background: rgba(255,255,255,0.1); color: white; border: none; padding: 10px 15px; border-radius: 50%; font-size: 20px; }
+                /* Menu de Contexto (Aperte e Segure) */
+                .context-menu { position: fixed; background: var(--ios-card); border-radius: 12px; width: 200px; display: none; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.3); z-index: 1000; overflow: hidden; }
+                .menu-item { padding: 12px 20px; border-bottom: 0.5px solid rgba(128,128,128,0.2); font-size: 17px; color: var(--ios-blue); }
                 
-                /* Barra de Status Inferior */
-                .bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(18, 18, 18, 0.9); backdrop-filter: blur(20px); padding: 15px; border-top: 0.5px solid #333; display: flex; justify-content: space-around; z-index: 1000; }
-                
-                /* Animações */
-                @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-                .animate-slide { animation: slideUp 0.3s ease-out; }
+                .bottom-nav { position: fixed; bottom: 0; width: 100%; background: rgba(var(--ios-card), 0.8); backdrop-filter: blur(20px); display: flex; justify-content: space-around; padding: 10px 0; border-top: 0.5px solid #333; }
             </style>
         </head>
         <body>
-            <div id="preview-modal">
-                <button class="close-btn" onclick="closePreview()">✕</button>
-                <div id="preview-content" style="width:100%; text-align:center"></div>
-            </div>
-
             <div class="header">
-                <div class="nav-row">
-                    <button class="btn" style="background:#333; padding: 10px;" onclick="goBack()">⇠</button>
-                    <div class="search-container">
-                        <input type="text" id="search" class="search-bar" placeholder="Pesquisar arquivos..." oninput="filterFiles()">
-                    </div>
-                    <label class="btn" style="background:var(--green)">
-                        ➕ <input type="file" id="up" hidden onchange="upload()">
-                    </label>
-                </div>
-                <div id="bc" style="font-size:12px; color:var(--blue); font-weight:600; opacity:0.8">/Armazenamento</div>
+                <h1>Explorar</h1>
+                <button onclick="goBack()" style="color:var(--ios-blue); background:none; border:none; font-size:17px;">⇠ Voltar</button>
             </div>
 
-            <div id="storage-header" style="padding: 10px 15px; font-size: 11px; color: var(--gray); text-align: right;">📊 Calculando...</div>
+            <div class="search-box">
+                <span style="margin-right:8px; opacity:0.5;">🔍</span>
+                <input type="text" class="search-input" placeholder="Buscar">
+            </div>
 
-            <div id="list" class="list-container"></div>
+            <div id="grid" class="grid"></div>
 
-            <div class="bottom-bar">
-                <div style="text-align:center" onclick="load('')">
-                    <div style="font-size:20px">🏠</div>
-                    <div style="font-size:10px; color:var(--gray)">Início</div>
-                </div>
-                <div style="text-align:center" onclick="alert('Funcionalidade em breve!')">
-                    <div style="font-size:20px">⭐</div>
-                    <div style="font-size:10px; color:var(--gray)">Favoritos</div>
-                </div>
-                <div style="text-align:center" onclick="location.reload()">
-                    <div style="font-size:20px">🔄</div>
-                    <div style="font-size:10px; color:var(--gray)">Recarregar</div>
-                </div>
+            <div id="context-menu" class="context-menu">
+                <div class="menu-item" onclick="action('move')">Mover</div>
+                <div class="menu-item" onclick="action('rename')">Renomear</div>
+                <div class="menu-item" onclick="action('delete')" style="color:var(--red)">Apagar</div>
+            </div>
+
+            <div class="bottom-nav">
+                <label>➕<input type="file" id="up" hidden onchange="upload()"></label>
+                <span onclick="location.reload()">🔄</span>
+                <span onclick="alert('Espaço: ' + document.getElementById('storage').innerText)">📊</span>
             </div>
 
             <script>
-                let curPath = "";
-                let allFiles = [];
+                let currentPath = "";
+                let longPressTimer;
+                let targetPath = "";
 
-                async function load(p = "") {
-                    curPath = p;
-                    document.getElementById('bc').innerText = "📍 " + (p || "/Raiz");
-                    try {
-                        const r = await fetch('/api/list?path=' + encodeURIComponent(p));
-                        allFiles = await r.json();
-                        render(allFiles);
-                        updateStorage();
-                    } catch(e) { document.getElementById('list').innerHTML = "<p style='text-align:center'>TV Offline</p>"; }
-                }
-
-                function render(files) {
-                    let h = '';
+                async function load(path = "") {
+                    currentPath = path;
+                    const r = await fetch('/api/list?path=' + encodeURIComponent(path));
+                    const files = await r.json();
+                    let html = '';
                     files.forEach(f => {
-                        h += `
-                        <div class="item">
-                            <div class="file-icon">${"$"}{f.icon}</div>
-                            <div class="file-info" onclick="${"$"}{f.isDir ? "load('"+f.relPath+"')" : "preview('"+f.relPath+"', '"+f.name+"')" }">
-                                <span class="file-name">${"$"}{f.name}</span>
-                                <span class="file-size">${"$"}{f.size}</span>
+                        const isImg = ['jpg','jpeg','png'].includes(f.name.split('.').pop().toLowerCase());
+                        const thumb = isImg ? `/api/stream?path=${"$"}{encodeURIComponent(f.relPath)}` : '';
+                        
+                        html += `
+                        <div class="file-card" 
+                             ontouchstart="startPress('${"$"}{f.relPath}')" 
+                             ontouchend="endPress()" 
+                             onclick="${"$"}{f.isDir ? "load('"+f.relPath+"')" : "preview('"+f.relPath+"')" }">
+                            <div class="icon-box">
+                                ${"$"}{thumb ? `<img src="${"$"}{thumb}">` : f.icon}
                             </div>
-                            <div style="display:flex">
-                                ${"$"}{!f.isDir ? `<button class="btn-icon" onclick="openTV('${"$"}{f.relPath}')">▶️</button>` : ''}
-                                ${"$"}{!f.isDir ? `<a href="/api/download?path=${"$"}{encodeURIComponent(f.relPath)}" class="btn-icon" style="text-decoration:none">📥</a>` : ''}
-                                <button class="btn-icon" style="color:var(--red)" onclick="del('${"$"}{f.relPath}')">🗑️</button>
-                            </div>
+                            <div class="name">${"$"}{f.name}</div>
                         </div>`;
                     });
-                    document.getElementById('list').innerHTML = h || '<p style='text-align:center; margin-top:40px; color:var(--gray)'>Nenhum arquivo encontrado</p>';
+                    document.getElementById('grid').innerHTML = html;
                 }
 
-                async function updateStorage() {
-                    const s = await fetch('/api/storage');
-                    const info = await s.json();
-                    document.getElementById('storage-header').innerText = "LIVRE: " + info.free + " / TOTAL: " + info.total;
+                function startPress(path) {
+                    targetPath = path;
+                    longPressTimer = setTimeout(() => {
+                        const menu = document.getElementById('context-menu');
+                        menu.style.display = 'flex';
+                        menu.style.left = '50%';
+                        menu.style.top = '50%';
+                        menu.style.transform = 'translate(-50%, -50%)';
+                    }, 600);
                 }
 
-                function filterFiles() {
-                    const q = document.getElementById('search').value.toLowerCase();
-                    render(allFiles.filter(f => f.name.toLowerCase().includes(q)));
+                function endPress() { clearTimeout(longPressTimer); }
+                window.onclick = () => document.getElementById('context-menu').style.display = 'none';
+
+                async function action(type) {
+                    if(type === 'delete' && !confirm('Apagar?')) return;
+                    await fetch('/api/action', { method: 'POST', body: new URLSearchParams({action: type, path: targetPath}) });
+                    load(currentPath);
                 }
 
-                function preview(path, name) {
-                    const modal = document.getElementById('preview-modal');
-                    const content = document.getElementById('preview-content');
-                    const ext = name.split('.').pop().toLowerCase();
-                    const url = '/api/stream?path=' + encodeURIComponent(path);
-                    if(['mp4','m4v','webm','mov','mp3'].includes(ext)) {
-                        content.innerHTML = `<video controls autoplay style="max-width:100%; box-shadow: 0 10px 40px rgba(0,0,0,0.5)" src="${"$"}{url}"></video>`;
-                    } else if(['jpg','jpeg','png','webp','gif'].includes(ext)) {
-                        content.innerHTML = `<img style="max-width:100%; border-radius:10px;" src="${"$"}{url}">`;
-                    } else { return; }
-                    modal.style.display = "flex";
-                }
-
-                function closePreview() { document.getElementById('preview-modal').style.display = "none"; document.getElementById('preview-content').innerHTML = ""; }
-                async function openTV(p) { await fetch('/api/open?path=' + encodeURIComponent(p)); }
-                async function del(p) { if(confirm('Excluir este arquivo da TV?')) { await fetch('/api/action', { method: 'POST', body: new URLSearchParams({action:'delete', path:p}) }); load(curPath); } }
-                function goBack() { let p = curPath.split('/').filter(x=>x); p.pop(); load(p.join('/')); }
-                
                 async function upload() {
-                    const file = document.getElementById('up').files[0];
-                    if(!file) return;
-                    const fd = new FormData(); fd.append('file', file);
-                    document.getElementById('storage-header').innerText = "🚀 Enviando: " + file.name;
-                    await fetch('/upload?path='+encodeURIComponent(curPath), {method:'POST', body:fd});
-                    load(curPath);
+                    const fd = new FormData(); fd.append('file', document.getElementById('up').files[0]);
+                    await fetch('/upload?path='+encodeURIComponent(currentPath), {method:'POST', body:fd});
+                    load(currentPath);
                 }
+                
+                function goBack() { let p = currentPath.split('/').filter(x=>x); p.pop(); load(p.join('/')); }
                 load();
             </script>
         </body>
