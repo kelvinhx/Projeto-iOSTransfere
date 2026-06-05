@@ -22,16 +22,16 @@ class FileServer(private val androidContext: Context) {
 
     fun start() {
         thread {
+            // Aguarda o IP ficar pronto (Evita o site offline)
+            while(NetworkManager.getLocalIpAddress() == "0.0.0.0") {
+                Thread.sleep(1000)
+            }
+
             try {
                 embeddedServer(Netty, port = AppConfig.SERVER_PORT) {
                     routing {
                         get("/") { call.respondText(WebInterface.getHtml(), ContentType.Text.Html) }
                         
-                        get("/api/logs") {
-                            val status = Logger.getSystemStatus(this@FileServer.androidContext)
-                            call.respondText("$status\n\n${Logger.getLogs()}", ContentType.Text.Plain)
-                        }
-
                         get("/api/storage") {
                             val info = FileUtils.getStorageInfo()
                             val json = JSONObject()
@@ -43,24 +43,16 @@ class FileServer(private val androidContext: Context) {
                             val path = call.parameters["path"] ?: ""
                             val folder = File(baseDir, path)
                             val json = JSONArray()
-                            folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
-                                val obj = JSONObject()
-                                obj.put("name", it.name).put("isDir", it.isDirectory)
-                                obj.put("icon", FileUtils.getFileIcon(it)).put("size", FileUtils.formatSize(it.length()))
-                                obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
-                                json.put(obj)
+                            if (folder.exists() && folder.isDirectory) {
+                                folder.listFiles()?.sortedBy { !it.isDirectory }?.forEach {
+                                    val obj = JSONObject()
+                                    obj.put("name", it.name).put("isDir", it.isDirectory)
+                                    obj.put("icon", FileUtils.getFileIcon(it)).put("size", FileUtils.formatSize(it.length()))
+                                    obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
+                                    json.put(obj)
+                                }
                             }
                             call.respondText(json.toString(), ContentType.Application.Json)
-                        }
-
-                        // DOWNLOAD: Permite salvar arquivos da TV no iPhone
-                        get("/api/download") {
-                            val path = call.parameters["path"] ?: ""
-                            val file = File(baseDir, path)
-                            if (file.exists() && file.isFile) {
-                                call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"${file.name}\"")
-                                call.respondFile(file)
-                            } else { call.respond(HttpStatusCode.NotFound) }
                         }
 
                         get("/api/open") {
@@ -68,26 +60,8 @@ class FileServer(private val androidContext: Context) {
                             val file = File(baseDir, path)
                             if (file.exists()) {
                                 openOnTV(file)
-                                call.respondText("Comando enviado")
+                                call.respondText("OK")
                             } else { call.respond(HttpStatusCode.NotFound) }
-                        }
-
-                        get("/api/stream") {
-                            val path = call.parameters["path"] ?: ""
-                            val file = File(baseDir, path)
-                            if (file.exists()) call.respondFile(file) else call.respond(HttpStatusCode.NotFound)
-                        }
-
-                        post("/api/action") {
-                            val p = call.receiveParameters()
-                            val action = p["action"]
-                            val target = File(baseDir, p["path"] ?: "")
-                            val success = when(action) {
-                                "delete" -> target.deleteRecursively()
-                                "rename", "move" -> target.renameTo(File(target.parent, p["dest"] ?: "novo"))
-                                else -> false
-                            }
-                            call.respond(if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
                         }
 
                         post("/upload") {
@@ -97,15 +71,7 @@ class FileServer(private val androidContext: Context) {
                             call.receiveMultipart().forEachPart { part ->
                                 if (part is PartData.FileItem) {
                                     val f = File(uploadDir, part.originalFileName ?: "file")
-                                    part.streamProvider().use { input ->
-                                        f.outputStream().use { output ->
-                                            val buffer = ByteArray(AppConfig.BUFFER_SIZE)
-                                            var bytesRead: Int
-                                            while (input.read(buffer).also { bytesRead = it } != -1) {
-                                                output.write(buffer, 0, bytesRead)
-                                            }
-                                        }
-                                    }
+                                    part.streamProvider().use { input -> f.outputStream().use { input.copyTo(it) } }
                                 }
                                 part.dispose()
                             }
@@ -113,7 +79,9 @@ class FileServer(private val androidContext: Context) {
                         }
                     }
                 }.start(wait = true)
-            } catch (e: Exception) { Logger.log("Erro: ${e.message}") }
+            } catch (e: Exception) { 
+                Logger.log("Erro Servidor: ${e.message}") 
+            }
         }
     }
 
@@ -121,17 +89,9 @@ class FileServer(private val androidContext: Context) {
         try {
             val intent = Intent(Intent.ACTION_VIEW)
             val uri = FileProvider.getUriForFile(androidContext, "${androidContext.packageName}.provider", file)
-            
-            // Lógica Especial para Instalar APK
-            if (file.extension.lowercase() == "apk") {
-                intent.setDataAndType(uri, "application/vnd.android.package-archive")
-            } else {
-                intent.setDataAndType(uri, FileUtils.getMimeType(file))
-            }
-            
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.setDataAndType(uri, FileUtils.getMimeType(file))
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             androidContext.startActivity(intent)
-        } catch (e: Exception) { Logger.log("Erro ao abrir: ${e.message}") }
+        } catch (e: Exception) { }
     }
 }
