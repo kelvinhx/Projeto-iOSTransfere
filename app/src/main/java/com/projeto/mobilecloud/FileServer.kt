@@ -14,9 +14,12 @@ import org.json.JSONObject
 import kotlin.concurrent.thread
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.core.content.FileProvider
 
 class FileServer(private val context: Context) {
+    private val baseDir = File(AppConfig.ROOT_PATH)
+
     fun start() {
         thread {
             try {
@@ -26,30 +29,35 @@ class FileServer(private val context: Context) {
                         
                         get("/api/storage") {
                             val info = FileUtils.getStorageInfo()
-                            call.respondText("{\"free\":\"${info.first}\",\"total\":\"${info.second}\"}", ContentType.Application.Json)
+                            val json = JSONObject()
+                            json.put("free", info.first)
+                            json.put("total", info.second)
+                            call.respondText(json.toString(), ContentType.Application.Json)
                         }
 
                         get("/api/list") {
                             val path = call.parameters["path"] ?: ""
-                            val folder = File(AppConfig.ROOT_PATH, path)
+                            val folder = File(baseDir, path)
                             val json = JSONArray()
                             folder.listFiles()?.sortedBy { !it.isDirectory }?.forEach {
                                 val obj = JSONObject()
-                                obj.put("name", it.name).put("isDir", it.isDirectory)
-                                obj.put("icon", FileUtils.getFileIcon(it)).put("size", FileUtils.formatSize(it.length()))
-                                obj.put("relPath", it.absolutePath.replace(AppConfig.ROOT_PATH, ""))
+                                obj.put("name", it.name)
+                                obj.put("isDir", it.isDirectory)
+                                obj.put("icon", FileUtils.getFileIcon(it))
+                                obj.put("size", FileUtils.formatSize(it.length()))
+                                obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
                                 json.put(obj)
                             }
                             call.respondText(json.toString(), ContentType.Application.Json)
                         }
 
-                        // NOVA ROTA: Abrir arquivo na TV
+                        // Rota para abrir arquivos na TV via iPhone
                         get("/api/open") {
                             val path = call.parameters["path"] ?: ""
-                            val file = File(AppConfig.ROOT_PATH, path)
+                            val file = File(baseDir, path)
                             if (file.exists()) {
                                 openFileOnTV(file)
-                                call.respond(HttpStatusCode.OK, "Abrindo na TV...")
+                                call.respondText("Abrindo na TV...", ContentType.Text.Plain)
                             } else {
                                 call.respond(HttpStatusCode.NotFound)
                             }
@@ -57,7 +65,7 @@ class FileServer(private val context: Context) {
 
                         post("/upload") {
                             val path = call.parameters["path"] ?: ""
-                            val uploadDir = File(AppConfig.ROOT_PATH, path)
+                            val uploadDir = File(baseDir, path)
                             call.receiveMultipart().forEachPart { part ->
                                 if (part is PartData.FileItem) {
                                     val f = File(uploadDir, part.originalFileName ?: "file")
@@ -69,17 +77,25 @@ class FileServer(private val context: Context) {
                         }
                     }
                 }.start(wait = true)
-            } catch (e: Exception) { Logger.log("Erro: ${e.message}") }
+            } catch (e: Exception) { 
+                Logger.log("Erro Servidor: ${e.message}")
+            }
         }
     }
 
     private fun openFileOnTV(file: File) {
         try {
             val intent = Intent(Intent.ACTION_VIEW)
-            val uri = Uri.fromFile(file) // Para simplicidade no momento
-            intent.setDataAndType(uri, FileUtils.getMimeType(file))
+            // Usa o FileProvider para segurança no Android 11+
+            val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+            
+            intent.setDataAndType(contentUri, "application/octet-stream") // MimeType genérico ou específico
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            
             context.startActivity(intent)
-        } catch (e: Exception) { Logger.log("Erro ao abrir: ${e.message}") }
+        } catch (e: Exception) {
+            Logger.log("Falha ao abrir arquivo: ${e.message}")
+        }
     }
 }
