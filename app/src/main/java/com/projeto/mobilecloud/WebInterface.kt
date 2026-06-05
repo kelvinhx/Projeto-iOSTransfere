@@ -8,96 +8,72 @@ object WebInterface {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Nexus Explorer Pro</title>
+            <title>Nexus Cloud Pro</title>
             <style>
-                body { font-family: sans-serif; background: #000; color: #fff; margin: 0; padding-bottom: 100px; }
-                .header { background: #121212; padding: 15px; position: sticky; top: 0; display: flex; gap: 10px; border-bottom: 1px solid #333; z-index: 100; }
-                .item { background: #1C1C1E; padding: 15px; border-radius: 12px; margin: 10px; display: flex; align-items: center; justify-content: space-between; }
-                .btn { background: #007AFF; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; }
-                #clip-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #007AFF; padding: 20px; display: none; text-align: center; }
+                :root { --blue: #007AFF; --bg: #000; --card: #1C1C1E; }
+                body { font-family: -apple-system, sans-serif; background: var(--bg); color: #fff; margin: 0; padding-bottom: 50px; }
+                .header { background: #121212; padding: 15px; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #333; }
+                .search-bar { width: 90%; margin: 10px auto; display: block; padding: 12px; border-radius: 10px; border: none; background: #222; color: #fff; }
+                .item { background: var(--card); padding: 15px; border-radius: 12px; margin: 10px; display: flex; align-items: center; justify-content: space-between; }
+                .btn { background: var(--blue); color: white; border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; }
+                .storage-info { font-size: 11px; text-align: center; color: #888; margin: 5px 0; }
             </style>
         </head>
         <body>
             <div class="header">
                 <button class="btn" onclick="goBack()">⬅️</button>
-                <label class="btn" style="background:#32D74B">📤 Enviar <input type="file" id="up" hidden onchange="upload()"></label>
-                <button class="btn" style="background:#444" onclick="mkdir()">📁 +Pasta</button>
+                <input type="text" class="search-bar" id="search" placeholder="🔍 Buscar na TV..." oninput="filterFiles()">
+                <label class="btn" style="background:#32D74B">📤 <input type="file" id="up" hidden onchange="upload()"></label>
             </div>
-            <div id="bc" style="padding:15px; color:#007AFF">📍 /Armazenamento</div>
+            <div id="storage" class="storage-info">Carregando memória...</div>
+            <div id="bc" style="padding:10px; color:var(--blue); font-size:13px;">📍 /Início</div>
             <div id="list"></div>
-
-            <div id="clip-bar">
-                <span id="clip-txt"></span>
-                <button class="btn" style="background:white; color:black; margin-left:10px" onclick="paste()">📋 COLAR AQUI</button>
-            </div>
 
             <script>
                 let curPath = "";
-                let clip = { path: "", name: "" };
+                let allFiles = [];
 
-                async function load(p = "") {
-                    curPath = p;
-                    document.getElementById('bc').innerText = "📍 " + (p || "/Início");
-                    const r = await fetch('/api/list?path=' + encodeURIComponent(p));
-                    const files = await r.json();
+                async function load(path = "") {
+                    curPath = path;
+                    document.getElementById('bc').innerText = "📍 " + (path || "/Início");
+                    const r = await fetch('/api/list?path=' + encodeURIComponent(path));
+                    allFiles = await r.json();
+                    
+                    // Atualiza info de storage
+                    const s = await fetch('/api/storage');
+                    const info = await s.json();
+                    document.getElementById('storage').innerText = "Livre: " + info.free + " / Total: " + info.total;
+                    
+                    render(allFiles);
+                }
+
+                function render(data) {
                     let h = '';
-                    files.forEach(f => {
+                    data.forEach(f => {
                         h += `<div class="item">
                             <div style="flex:1" onclick="${"$"}{f.isDir ? "load('"+f.relPath+"')" : ""}">
-                                ${"$"}{f.isDir ? '📂' : '📄'} ${"$"}{f.name} <br>
-                                <small style="color:#666">${"$"}{f.size}</small>
+                                ${"$"}{f.icon} ${"$"}{f.name} <br><small style="color:#666">${"$"}{f.size}</small>
                             </div>
-                            <div style="display:flex; gap:15px">
-                                <span onclick="rename('${"$"}{f.relPath}','${"$"}{f.name}')">✏️</span>
-                                <span onclick="setClip('${"$"}{f.relPath}','${"$"}{f.name}')">✂️</span>
-                                <span onclick="del('${"$"}{f.relPath}')">🗑️</span>
-                            </div>
+                            <span onclick="del('${"$"}{f.relPath}')">🗑️</span>
                         </div>`;
                     });
-                    document.getElementById('list').innerHTML = h;
+                    document.getElementById('list').innerHTML = h || '<p style="text-align:center">Nenhum item</p>';
                 }
 
-                function setClip(p, n) {
-                    clip = { path: p, name: n };
-                    document.getElementById('clip-txt').innerText = "Recortado: " + n;
-                    document.getElementById('clip-bar').style.display = "block";
-                }
-
-                async function paste() {
-                    const p = new URLSearchParams({ action: 'move', path: clip.path, dest: curPath + '/' + clip.name });
-                    await fetch('/api/action', { method: 'POST', body: p });
-                    document.getElementById('clip-bar').style.display = "none";
-                    load(curPath);
-                }
-
-                async function rename(p, old) {
-                    const n = prompt("Novo nome:", old);
-                    if(n) {
-                        const params = new URLSearchParams({ action: 'rename', path: p, dest: p.replace(old, n) });
-                        await fetch('/api/action', { method: 'POST', body: params });
-                        load(curPath);
-                    }
-                }
-
-                async function del(p) { if(confirm('Apagar?')) { 
-                    await fetch('/api/action', { method: 'POST', body: new URLSearchParams({action:'delete', path:p}) });
-                    load(curPath); 
-                } }
-
-                async function mkdir() {
-                    const n = prompt("Nome da pasta:");
-                    if(n) {
-                        await fetch('/api/action', { method: 'POST', body: new URLSearchParams({action:'mkdir', path:curPath, name:n}) });
-                        load(curPath);
-                    }
+                function filterFiles() {
+                    const term = document.getElementById('search').value.toLowerCase();
+                    const filtered = allFiles.filter(f => f.name.toLowerCase().includes(term));
+                    render(filtered);
                 }
 
                 function goBack() { let p = curPath.split('/').filter(x=>x); p.pop(); load(p.join('/')); }
                 async function upload() {
                     const fd = new FormData(); fd.append('file', document.getElementById('up').files[0]);
-                    await fetch('/upload?path='+encodeURIComponent(curPath), {method:'POST', body:fd});
-                    load(curPath);
+                    await fetch('/upload?path='+encodeURIComponent(curPath), {method:'POST', body:fd}); load(curPath);
                 }
+                async function del(p) { if(confirm('Apagar?')) { 
+                    await fetch('/api/action', { method: 'POST', body: new URLSearchParams({action:'delete', path:p}) }); load(curPath); 
+                } }
                 load();
             </script>
         </body>
