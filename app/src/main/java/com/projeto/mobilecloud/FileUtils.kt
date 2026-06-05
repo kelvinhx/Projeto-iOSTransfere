@@ -7,17 +7,7 @@ import java.io.File
 import java.text.DecimalFormat
 
 object FileUtils {
-    fun getFileIcon(file: File): String {
-        if (file.isDirectory) return "📁"
-        return when (file.extension.lowercase()) {
-            "apk" -> "🤖"
-            "jpg", "png", "webp" -> "🖼️"
-            "mp4", "mkv", "avi" -> "🎬"
-            "mp3", "wav" -> "🎵"
-            "zip", "rar" -> "📦"
-            else -> "📄"
-        }
-    }
+    fun getFileIcon(file: File): String = if (file.isDirectory) "📁" else "📄"
 
     fun getMimeType(file: File): String {
         val extension = file.extension.lowercase()
@@ -34,9 +24,6 @@ object FileUtils {
     fun getStorageInfo(): Pair<String, String> {
         val path = Environment.getExternalStorageDirectory()
         val stat = StatFs(path.path)
-        return Pair(
-            formatSize(stat.availableBlocksLong * stat.blockSizeLong),
-            formatSize(stat.blockCountLong * stat.blockSizeLong)
-        )
+        return Pair(formatSize(stat.availableBytes), formatSize(stat.totalBytes))
     }
 }
