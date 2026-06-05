@@ -1,32 +1,21 @@
 package com.projeto.mobilecloud
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.LinkProperties
-import android.net.Network
 import java.net.Inet4Address
+import java.net.NetworkInterface
 
 object NetworkManager {
-    private var currentIp: String = "0.0.0.0"
-
     fun getLocalIpAddress(): String {
         try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            val interfaces = NetworkInterface.getNetworkInterfaces()
             for (i in interfaces) {
-                for (a in i.inetAddresses) {
-                    if (!a.isLoopbackAddress && a is java.net.Inet4Address) {
-                        currentIp = a.hostAddress ?: "0.0.0.0"
-                        return currentIp
+                val addrs = i.inetAddresses
+                for (a in addrs) {
+                    if (!a.isLoopbackAddress && a is Inet4Address) {
+                        return a.hostAddress ?: "0.0.0.0"
                     }
                 }
             }
-        } catch (e: Exception) { }
-        return currentIp
-    }
-
-    // Verifica se o IP mudou para disparar uma atualização na UI
-    fun hasIpChanged(): Boolean {
-        val oldIp = currentIp
-        return getLocalIpAddress() != oldIp
+        } catch (e: Exception) {}
+        return "0.0.0.0"
     }
 }
