@@ -21,7 +21,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
-        // GATILHO: Inicia o servidor como um Serviço de Primeiro Plano
+        // Inicia o Serviço de Primeiro Plano
         val serviceIntent = Intent(this, NexusService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -39,21 +39,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupUI() {
         val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
-
-        // Sidebar
         val sidebar = LinearLayout(this).apply {
             id = View.generateViewId()
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(40, 40, 40, 40)
-            background = ColorDrawable(Color.parseColor("#111113"))
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setPadding(40, 40, 40, 40); background = ColorDrawable(Color.parseColor("#111113"))
             layoutParams = RelativeLayout.LayoutParams(420, -1)
         }
 
         val qrImage = ImageView(this).apply {
             layoutParams = LinearLayout.LayoutParams(320, 320)
-            setBackgroundColor(Color.WHITE)
-            setPadding(10, 10, 10, 10)
+            setBackgroundColor(Color.WHITE); setPadding(10, 10, 10, 10)
         }
 
         val url = "http://${NetworkManager.getLocalIpAddress()}:${AppConfig.SERVER_PORT}"
@@ -64,7 +59,6 @@ class MainActivity : AppCompatActivity() {
 
         sidebar.addView(qrImage); sidebar.addView(info)
 
-        // Explorer
         val scroll = ScrollView(this).apply {
             val params = RelativeLayout.LayoutParams(-1, -1)
             params.addRule(RelativeLayout.RIGHT_OF, sidebar.id)
@@ -86,9 +80,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshList() {
         container.removeAllViews()
-        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            container.addView(createStyledButton("⚠️ CLIQUE PARA LIBERAR ACESSO") { requestPerm() })
+            container.addView(createStyledButton("⚠️ LIBERAR ACESSO") {
+                val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                i.data = Uri.parse("package:$packageName")
+                startActivity(i)
+            })
             return
         }
 
@@ -105,23 +102,10 @@ class MainActivity : AppCompatActivity() {
             text = txt; isFocusable = true; setTextColor(Color.LTGRAY)
             textAlignment = View.TEXT_ALIGNMENT_VIEW_START; setPadding(40, 30, 40, 30)
             val normal = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 12f }
-            val focused = GradientDrawable().apply { 
-                setColor(Color.parseColor(AppConfig.THEME_ACCENT)); cornerRadius = 12f; setStroke(4, Color.WHITE)
-            }
-            background = StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_focused), focused)
-                addState(intArrayOf(), normal)
-            }
+            val focused = GradientDrawable().apply { setColor(Color.parseColor(AppConfig.THEME_ACCENT)); cornerRadius = 12f; setStroke(4, Color.WHITE) }
+            background = StateListDrawable().apply { addState(intArrayOf(android.R.attr.state_focused), focused); addState(intArrayOf(), normal) }
             setOnClickListener { onClick() }
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 10, 0, 10) }
-        }
-    }
-
-    private fun requestPerm() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-            i.data = Uri.parse("package:$packageName")
-            startActivity(i)
         }
     }
 }
