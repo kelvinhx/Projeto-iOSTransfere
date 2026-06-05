@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.*
 import android.view.*
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.net.URL
@@ -14,133 +15,132 @@ import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var container: LinearLayout
+    private lateinit var gridContainer: GridLayout
     private var currentPath = File(AppConfig.ROOT_PATH)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        
-        // GATILHO: Garante que o serviço inicie primeiro
-        startNexusService()
+        startService(Intent(this, NexusService::class.java))
         setupUI()
-    }
-
-    private fun startNexusService() {
-        val serviceIntent = Intent(this, NexusService::class.java)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-        } catch (e: Exception) { Logger.log("Falha ao iniciar serviço") }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refreshList()
     }
 
     private fun setupUI() {
         val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
 
-        // Sidebar ajustada para não esmagar o QR Code
+        // Sidebar Transparente
         val sidebar = LinearLayout(this).apply {
             id = View.generateViewId()
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(50, 50, 50, 50)
-            background = ColorDrawable(Color.parseColor("#0F0F12"))
-            layoutParams = RelativeLayout.LayoutParams(500, -1) // Aumentado de 420 para 500
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setPadding(30, 30, 30, 30)
+            background = ColorDrawable(Color.parseColor("#121214"))
+            layoutParams = RelativeLayout.LayoutParams(400, -1)
         }
 
-        val qrImage = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(350, 350)
-            setBackgroundColor(Color.WHITE)
-            setPadding(10, 10, 10, 10)
-        }
-
-        val url = "http://${NetworkManager.getLocalIpAddress()}:${AppConfig.SERVER_PORT}"
-        val info = TextView(this).apply {
-            text = "SCAN PARA CONECTAR\n$url"
-            setTextColor(Color.CYAN); textSize = 15f; gravity = Gravity.CENTER
-            setPadding(0, 40, 0, 0)
-        }
-
+        val qrImage = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(280, 280); setBackgroundColor(Color.WHITE) }
+        val info = TextView(this).apply { text = "CONECTAR IPHONE\n8080"; setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0,20,0,20) }
+        
         sidebar.addView(qrImage); sidebar.addView(info)
 
-        // Explorador
+        // Explorador em Grade (GRID)
         val scroll = ScrollView(this).apply {
-            val params = RelativeLayout.LayoutParams(-1, -1)
-            params.addRule(RelativeLayout.RIGHT_OF, sidebar.id)
-            layoutParams = params
+            layoutParams = RelativeLayout.LayoutParams(-1, -1).apply { addRule(RelativeLayout.RIGHT_OF, sidebar.id) }
+            isFillViewport = true
         }
-        container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 40, 40, 100) }
-        scroll.addView(container)
+
+        gridContainer = GridLayout(this).apply {
+            columnCount = 4
+            alignmentMode = GridLayout.ALIGN_BOUNDS
+            setPadding(30, 30, 30, 30)
+        }
+        scroll.addView(gridContainer)
 
         root.addView(sidebar); root.addView(scroll)
         setContentView(root)
 
-        // Gerador de QR Code
+        // QR Code Load
         thread {
             try {
-                val bitmap = BitmapFactory.decodeStream(URL("https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${Uri.encode(url)}").openStream())
+                val url = "http://${NetworkManager.getLocalIpAddress()}:8080"
+                val bitmap = BitmapFactory.decodeStream(URL("https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${Uri.encode(url)}").openStream())
                 runOnUiThread { qrImage.setImageBitmap(bitmap) }
             } catch (e: Exception) { }
         }
     }
 
-    private fun refreshList() {
-        container.removeAllViews()
+    override fun onResume() {
+        super.onResume()
+        refreshGrid()
+    }
+
+    private fun refreshGrid() {
+        gridContainer.removeAllViews()
         
-        // Lógica de Permissão Universal (TCL/Android TV)
+        // Verifica Permissão Especial
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            container.addView(createStyledButton("⚠️ CONFIGURAR ACESSO AO DISCO\n(O sistema abrirá uma tela de permissão)") {
-                try {
-                    // Intent Genérica (Evita o crash em TVs)
-                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    // Fallback para configurações do app
-                    val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    intent.data = Uri.parse("package:$packageName")
-                    startActivity(intent)
-                }
-            })
+            val btn = createGridItem("🔒 ATIVAR ACESSO", "") {
+                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            }
+            gridContainer.addView(btn)
             return
         }
 
         val files = currentPath.listFiles()?.sortedBy { !it.isDirectory } ?: listOf()
-        if (currentPath.absolutePath != AppConfig.ROOT_PATH) {
-            container.addView(createStyledButton("⬅️ VOLTAR") {
-                currentPath = currentPath.parentFile ?: File(AppConfig.ROOT_PATH)
-                refreshList()
-            })
-        }
-
+        
         files.forEach { file ->
-            val label = "${FileUtils.getFileIcon(file)} ${file.name.uppercase()}\n${FileUtils.formatSize(file.length())}"
-            container.addView(createStyledButton(label) {
-                if (file.isDirectory) { currentPath = file; refreshList() }
-            })
+            val size = if(file.isDirectory) FileUtils.formatSize(FileUtils.getFolderSize(file)) else FileUtils.formatSize(file.length())
+            val view = createGridItem("${FileUtils.getFileIcon(file)}\n${file.name.take(12)}", size) {
+                if (file.isDirectory) { currentPath = file; refreshGrid() }
+                else { showActionMenu(file) }
+            }
+            gridContainer.addView(view)
         }
     }
 
-    private fun createStyledButton(txt: String, onClick: () -> Unit): Button {
-        return Button(this).apply {
-            text = txt; isFocusable = true; setTextColor(Color.WHITE)
-            textAlignment = View.TEXT_ALIGNMENT_VIEW_START; setPadding(50, 40, 50, 40)
-            val normal = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 15f }
-            val focused = GradientDrawable().apply { 
-                setColor(Color.parseColor(AppConfig.COLOR_ACCENT)); cornerRadius = 15f; setStroke(5, Color.WHITE) 
-            }
+    private fun createGridItem(name: String, sub: String, onClick: () -> Unit): LinearLayout {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            isFocusable = true; isClickable = true
+            setPadding(20, 20, 20, 20)
+            
+            val normal = GradientDrawable().apply { setColor(Color.parseColor("#1C1C1E")); cornerRadius = 20f }
+            val focused = GradientDrawable().apply { setColor(Color.parseColor(AppConfig.COLOR_ACCENT)); cornerRadius = 20f; setStroke(4, Color.WHITE) }
+            
             background = StateListDrawable().apply {
                 addState(intArrayOf(android.R.attr.state_focused), focused)
                 addState(intArrayOf(), normal)
             }
+            
             setOnClickListener { onClick() }
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 12, 0, 12) }
         }
+
+        val txt = TextView(this).apply { text = name; setTextColor(Color.WHITE); gravity = Gravity.CENTER; textSize = 14f }
+        val stxt = TextView(this).apply { text = sub; setTextColor(Color.GRAY); textSize = 10f; gravity = Gravity.CENTER }
+        
+        layout.addView(txt); layout.addView(stxt)
+        
+        layout.layoutParams = GridLayout.LayoutParams().apply {
+            width = 250; height = 250; setMargins(15, 15, 15, 15)
+        }
+        
+        return layout
+    }
+
+    private fun showActionMenu(file: File) {
+        val options = arrayOf("Abrir ▶️", "Excluir 🗑️", "Renomear ✏️")
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(file.name)
+            .setItems(options) { _, which ->
+                when(which) {
+                    1 -> { file.deleteRecursively(); refreshGrid() }
+                }
+            }.show()
+    }
+
+    override fun onBackPressed() {
+        if (currentPath.absolutePath != AppConfig.ROOT_PATH) {
+            currentPath = currentPath.parentFile ?: File(AppConfig.ROOT_PATH)
+            refreshGrid()
+        } else super.onBackPressed()
     }
 }
