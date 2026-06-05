@@ -7,22 +7,19 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 
 class NexusService : Service() {
-
     private var server: FileServer? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val channelId = "NexusServer"
-        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Nexus Engine", NotificationManager.IMPORTANCE_LOW)
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            (getSystemService(Service.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Nexus Pro Ativo")
-            .setContentText("Servidor rodando em segundo plano")
-            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setContentText("Servidor rodando")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
 
         startForeground(1, notification)
@@ -31,7 +28,6 @@ class NexusService : Service() {
             server = FileServer(this)
             server?.start()
         }
-
         return START_STICKY
     }
 
