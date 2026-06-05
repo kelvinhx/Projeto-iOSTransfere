@@ -22,11 +22,6 @@ class FileServer(private val androidContext: Context) {
 
     fun start() {
         thread {
-            // Aguarda o IP ficar pronto (Evita o site offline)
-            while(NetworkManager.getLocalIpAddress() == "0.0.0.0") {
-                Thread.sleep(1000)
-            }
-
             try {
                 embeddedServer(Netty, port = AppConfig.SERVER_PORT) {
                     routing {
@@ -44,10 +39,16 @@ class FileServer(private val androidContext: Context) {
                             val folder = File(baseDir, path)
                             val json = JSONArray()
                             if (folder.exists() && folder.isDirectory) {
-                                folder.listFiles()?.sortedBy { !it.isDirectory }?.forEach {
+                                folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
                                     val obj = JSONObject()
-                                    obj.put("name", it.name).put("isDir", it.isDirectory)
-                                    obj.put("icon", FileUtils.getFileIcon(it)).put("size", FileUtils.formatSize(it.length()))
+                                    obj.put("name", it.name)
+                                    obj.put("isDir", it.isDirectory)
+                                    obj.put("icon", FileUtils.getFileIcon(it))
+                                    
+                                    // DINÂMICA: Soma o tamanho se for pasta, senão pega o tamanho do arquivo
+                                    val sizeVal = if(it.isDirectory) FileUtils.getFolderSize(it) else it.length()
+                                    obj.put("size", FileUtils.formatSize(sizeVal))
+                                    
                                     obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
                                     json.put(obj)
                                 }
@@ -60,8 +61,26 @@ class FileServer(private val androidContext: Context) {
                             val file = File(baseDir, path)
                             if (file.exists()) {
                                 openOnTV(file)
-                                call.respondText("OK")
+                                call.respondText("Abrindo na TV")
                             } else { call.respond(HttpStatusCode.NotFound) }
+                        }
+
+                        get("/api/stream") {
+                            val path = call.parameters["path"] ?: ""
+                            val file = File(baseDir, path)
+                            if (file.exists()) call.respondFile(file) else call.respond(HttpStatusCode.NotFound)
+                        }
+
+                        post("/api/action") {
+                            val p = call.receiveParameters()
+                            val action = p["action"]
+                            val target = File(baseDir, p["path"] ?: "")
+                            val success = when(action) {
+                                "delete" -> target.deleteRecursively()
+                                "rename" -> target.renameTo(File(target.parent, p["dest"] ?: "novo"))
+                                else -> false
+                            }
+                            call.respond(if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest)
                         }
 
                         post("/upload") {
@@ -79,9 +98,7 @@ class FileServer(private val androidContext: Context) {
                         }
                     }
                 }.start(wait = true)
-            } catch (e: Exception) { 
-                Logger.log("Erro Servidor: ${e.message}") 
-            }
+            } catch (e: Exception) { Logger.log("Erro: ${e.message}") }
         }
     }
 
