@@ -29,19 +29,16 @@ class FileServer(private val context: Context) {
                         
                         get("/api/storage") {
                             val info = FileUtils.getStorageInfo()
-                            val json = JSONObject()
-                            json.put("free", info.first).put("total", info.second)
-                            call.respondText(json.toString(), ContentType.Application.Json)
+                            call.respondText("{\"free\":\"${info.first}\",\"total\":\"${info.second}\"}", ContentType.Application.Json)
                         }
 
                         get("/api/list") {
                             val path = call.parameters["path"] ?: ""
                             val folder = File(baseDir, path)
                             val json = JSONArray()
-                            folder.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))?.forEach {
+                            folder.listFiles()?.sortedBy { !it.isDirectory }?.forEach {
                                 val obj = JSONObject()
                                 obj.put("name", it.name).put("isDir", it.isDirectory)
-                                obj.put("icon", FileUtils.getFileIcon(it)).put("size", FileUtils.formatSize(it.length()))
                                 obj.put("relPath", it.absolutePath.replace(baseDir.absolutePath, ""))
                                 json.put(obj)
                             }
@@ -52,8 +49,12 @@ class FileServer(private val context: Context) {
                             val path = call.parameters["path"] ?: ""
                             val file = File(baseDir, path)
                             if (file.exists()) {
-                                openFileOnTV(file)
-                                call.respondText("Abrindo...", ContentType.Text.Plain)
+                                val intent = Intent(Intent.ACTION_VIEW)
+                                val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                                intent.setDataAndType(contentUri, FileUtils.getMimeType(file))
+                                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                                call.respondText("Abrindo...")
                             } else { call.respond(HttpStatusCode.NotFound) }
                         }
 
@@ -71,18 +72,7 @@ class FileServer(private val context: Context) {
                         }
                     }
                 }.start(wait = true)
-            } catch (e: Exception) { Logger.log("Server Error: ${e.message}") }
+            } catch (e: Exception) {}
         }
-    }
-
-    private fun openFileOnTV(file: File) {
-        try {
-            val intent = Intent(Intent.ACTION_VIEW)
-            val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-            intent.setDataAndType(contentUri, FileUtils.getMimeType(file))
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        } catch (e: Exception) { Logger.log("Erro ao abrir: ${e.message}") }
     }
 }
